@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dayan.food.mapper.FavoriteMapper">
+    <insert id="insertIgnore">
+        INSERT IGNORE INTO food_favorite (user_id, food_id, created_at)
+        VALUES (#{userId}, #{foodId}, #{createdAt})
+    </insert>
+    <delete id="delete">
+        DELETE FROM food_favorite WHERE user_id = #{userId} AND food_id = #{foodId}
+    </delete>
+    <select id="exists" resultType="int">
+        SELECT COUNT(*) FROM food_favorite WHERE user_id = #{userId} AND food_id = #{foodId}
+    </select>
+    <select id="findByUserId" resultMap="com.dayan.food.mapper.FoodMapper.foodResultMap">
+        SELECT <include refid="com.dayan.food.mapper.FoodMapper.foodColumns"/>
+        FROM food_favorite favorite
+        INNER JOIN food f ON f.id = favorite.food_id AND f.review_status = 'APPROVED'
+        LEFT JOIN region r ON r.id = f.region_id
+        WHERE favorite.user_id = #{userId}
+        ORDER BY favorite.created_at DESC
+    </select>
+</mapper>

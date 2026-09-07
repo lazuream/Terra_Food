@@ -339,3 +339,61 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+
+.collection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.collection-actions .like-button {
+  margin-top: 0;
+}
+
+.collection-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  background: #ffffff1f;
+  border: 1px solid #ffffff66;
+}
+
+.collection-button:hover,
+.collection-button.active {
+  background: #8f3029;
+  border-color: #8f3029;
+}
+
+.collection-button:disabled {
+  cursor: wait;
+  opacity: .6;
+}
+
+.collection-action-error {
+  margin: 10px 0 0 !important;
+  color: #ffe0cf !important;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .collection-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .collection-actions .like-button {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+
+  .collection-button {
+    justify-content: center;
+    min-height: 44px;
+  }
+}

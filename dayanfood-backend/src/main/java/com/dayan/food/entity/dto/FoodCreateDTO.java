@@ -17,7 +17,6 @@ public record FoodCreateDTO(
         @Size(max = 100)
         String name,
 
-        @NotNull
         Long regionId,
 
         @NotNull
@@ -53,6 +52,9 @@ public record FoodCreateDTO(
         String imageUrl,
 
         @Size(max = 1000)
-        String remark
+        String remark,
+
+        @Size(max = 100) String province,
+        @Size(max = 100) String city
 ) {
 }

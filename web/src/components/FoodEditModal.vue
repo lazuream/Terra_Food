@@ -22,7 +22,7 @@ const { t } = useI18n()
 
 const form = reactive<FoodUpdatePayload>({
   name: props.food.name,
-  regionId: props.food.region.id,
+  regionId: props.food.region.id || undefined,
   latitude: props.food.latitude,
   longitude: props.food.longitude,
   address: props.food.address || '',
@@ -106,10 +106,6 @@ function selectImage(event: Event) {
 
 async function submit() {
   error.value = ''
-  if (!form.regionId) {
-    error.value = t('upload.regionRequired')
-    return
-  }
   saving.value = true
   try {
     if (image.value) form.imageUrl = await uploadImage(image.value)

@@ -56,6 +56,42 @@ class FoodServiceImplTests {
     }
 
     @Test
+    void createsFoodWithoutLookingUpOrCreatingRegion() {
+        when(appUserMapper.findByUsername("reader")).thenReturn(
+                new com.dayan.food.entity.po.AppUser("reader", "unused", "Reader",
+                        com.dayan.food.entity.enums.UserRole.USER));
+        var result = service.create("Dish", null, java.math.BigDecimal.ONE,
+                java.math.BigDecimal.TEN, "Address", "Summary", "Story", "Ingredients",
+                null, null, "reader");
+        org.junit.jupiter.api.Assertions.assertNull(result.region().id());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                com.dayan.food.entity.enums.FoodReviewStatus.PENDING, result.reviewStatus());
+        org.mockito.Mockito.verifyNoInteractions(regionMapper);
+        verify(foodMapper).insert(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void storesCityOnFoodWithoutCreatingRegion() {
+        when(appUserMapper.findByUsername("reader")).thenReturn(
+                new com.dayan.food.entity.po.AppUser("reader", "unused", "Reader",
+                        com.dayan.food.entity.enums.UserRole.USER));
+        var saved = new com.dayan.food.entity.po.Food("Dish", null,
+                java.math.BigDecimal.ONE, java.math.BigDecimal.TEN, "", "Summary",
+                "Story", "Ingredients", null, null, "reader",
+                com.dayan.food.entity.enums.FoodReviewStatus.PENDING);
+        org.mockito.Mockito.doAnswer(call -> {
+            org.springframework.test.util.ReflectionTestUtils.setField((Object) call.getArgument(0), "id", 91L);
+            return 1;
+        }).when(foodMapper).insert(org.mockito.ArgumentMatchers.any());
+        when(foodMapper.findOwnedById(91L, "reader")).thenReturn(saved);
+        service.create(new com.dayan.food.entity.dto.FoodCreateDTO("Dish", null,
+                java.math.BigDecimal.ONE, java.math.BigDecimal.TEN, "", "Summary",
+                "Story", "Ingredients", null, null, " 四川省 ", " 成都市 "), "reader");
+        verify(foodMapper).updateLocationLabels(91L, "四川省", "成都市");
+        org.mockito.Mockito.verifyNoInteractions(regionMapper);
+    }
+
+    @Test
     void firstDailyVisitIncreasesHeatWithoutTouchingExistingFootprint() {
         when(foodMapper.insertDailyVisit(7L, "reader")).thenReturn(1);
         when(foodMapper.incrementHeat(7L)).thenReturn(1);

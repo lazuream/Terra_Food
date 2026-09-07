@@ -10,6 +10,9 @@ import java.util.List;
 
 public interface FoodMapper {
 
+    int updateLocationLabels(@Param("id") Long id,
+            @Param("province") String province, @Param("city") String city);
+
     List<Food> findList(
             @Param("keyword") String keyword,
             @Param("regionId") Long regionId,
@@ -59,6 +62,8 @@ public interface FoodMapper {
     List<Food> findByCreatedBy(String username);
 
     List<Food> findApprovedByCreatedBy(@Param("username") String username, @Param("limit") int limit);
+
+    List<Food> findApprovedForMatching();
 
     Food findOwnedById(@Param("id") Long id, @Param("username") String username);
 

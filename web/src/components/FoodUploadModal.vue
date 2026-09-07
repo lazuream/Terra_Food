@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { createFood, uploadImage } from '../api'
@@ -12,7 +12,6 @@ import {
   saveDraft,
   type DraftImageMeta,
 } from '../drafts'
-import RegionDrawer from './RegionDrawer.vue'
 import type { Food, FoodCreatePayload, Region } from '../types'
 
 const props = defineProps<{
@@ -21,6 +20,8 @@ const props = defineProps<{
   longitude?: number
   regionId?: number
   address?: string
+  province?: string
+  city?: string
 }>()
 
 const emit = defineEmits<{
@@ -37,7 +38,9 @@ type UploadForm = Omit<FoodCreatePayload, 'latitude' | 'longitude'> & {
 
 const form = reactive<UploadForm>({
   name: '',
-  regionId: 0,
+  regionId: undefined,
+  province: '',
+  city: '',
   latitude: undefined,
   longitude: undefined,
   address: '',
@@ -53,24 +56,7 @@ const previewUrl = ref('')
 const coverInput = ref<HTMLInputElement>()
 const saving = ref(false)
 const error = ref('')
-const regionDrawerOpen = ref(false)
 const { t } = useI18n()
-
-const selectedRegion = computed(() => props.regions.find((region) => region.id === form.regionId))
-const pickedCoordinatesUnchanged = computed(() => {
-  return props.latitude != null
-    && props.longitude != null
-    && form.latitude != null
-    && form.longitude != null
-    && Math.abs(form.latitude - props.latitude) < 0.000001
-    && Math.abs(form.longitude - props.longitude) < 0.000001
-})
-const regionMismatch = computed(() => {
-  return pickedCoordinatesUnchanged.value
-    && props.regionId != null
-    && form.regionId > 0
-    && form.regionId !== props.regionId
-})
 
 watch(
   () => [props.latitude, props.longitude],
@@ -84,11 +70,10 @@ watch(
 )
 
 watch(
-  () => props.regionId,
-  (regionId) => {
-    if (regionId != null) {
-      form.regionId = regionId
-    }
+  () => [props.province, props.city],
+  ([province, city]) => {
+    if (!form.province) form.province = province || ''
+    if (!form.city) form.city = city || ''
   },
   { immediate: true },
 )
@@ -150,13 +135,6 @@ onBeforeUnmount(() => {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
 })
 
-function selectRegion(regionId?: number) {
-  if (regionId != null) {
-    form.regionId = regionId
-    error.value = ''
-  }
-}
-
 function selectImage(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -178,16 +156,6 @@ async function submit() {
   if (form.latitude == null || form.longitude == null
       || !Number.isFinite(form.latitude) || !Number.isFinite(form.longitude)) {
     error.value = t('upload.coordinateRequired')
-    return
-  }
-
-  if (!form.regionId) {
-    error.value = t('upload.regionRequired')
-    return
-  }
-
-  if (regionMismatch.value) {
-    error.value = t('upload.regionCoordinateMismatch')
     return
   }
 
@@ -235,16 +203,9 @@ async function submit() {
             <input v-model="form.name" required maxlength="100">
           </label>
           <label>
-            {{ t('upload.region') }}
-            <button class="region-select-trigger" type="button" @click="regionDrawerOpen = true">
-              <span>
-                {{ selectedRegion
-                  ? t('upload.regionPath', { province: selectedRegion.province, city: selectedRegion.name })
-                  : t('upload.selectRegion')
-                }}
-              </span>
-              <b>›</b>
-            </button>
+            {{ t('upload.cityLabel') }}
+            <input v-model.trim="form.province" maxlength="100" :placeholder="t('upload.provincePlaceholder')">
+            <input v-model.trim="form.city" maxlength="100" :placeholder="t('upload.cityPlaceholder')">
           </label>
           <label>
             {{ t('upload.latitude') }}
@@ -257,7 +218,6 @@ async function submit() {
         </div>
 
         <p class="coordinate-tip">{{ t('upload.coordinateTip') }}</p>
-        <p v-if="regionMismatch" class="coordinate-warning">{{ t('upload.regionCoordinateMismatch') }}</p>
 
         <label>
           {{ t('upload.address') }}
@@ -312,12 +272,5 @@ async function submit() {
       </form>
     </section>
 
-    <RegionDrawer
-      :open="regionDrawerOpen"
-      :regions="regions"
-      :model-value="form.regionId || undefined"
-      @close="regionDrawerOpen = false"
-      @select="selectRegion"
-    />
   </div>
 </template>

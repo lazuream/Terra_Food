@@ -96,19 +96,7 @@ public class FoodController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public FoodVO create(@Valid @RequestBody FoodCreateDTO request, Authentication authentication) {
-        return foodService.create(
-                request.name(),
-                request.regionId(),
-                request.latitude(),
-                request.longitude(),
-                request.address(),
-                request.summary(),
-                request.story(),
-                request.ingredients(),
-                request.imageUrl(),
-                request.remark(),
-                authentication == null ? "无名" : authentication.getName()
-        );
+        return foodService.create(request, authentication == null ? "无名" : authentication.getName());
     }
 
     @PostMapping("/import")
