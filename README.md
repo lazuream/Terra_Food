@@ -281,10 +281,23 @@ $env:MAIL_SSL_ENABLED = "false"
 <details>
 <summary><strong>方案 B · 仅做前端｜连接团队开发后端</strong></summary>
 
+## 登录保持
+
+普通用户和管理员默认保持登录 7 天，无需额外开启。浏览器使用有效期为 7 天的 HttpOnly Cookie；Redis 会话的空闲超时同样为 7 天。退出登录、清除 Cookie 或会话失效后需要重新登录。不同浏览器的登录状态互不共享，游客浏览不受影响。
+
+可以在启动后端前通过 `SESSION_TIMEOUT`（服务端空闲超时）和 `SESSION_COOKIE_MAX_AGE`（浏览器 Cookie 有效期）覆盖默认值，例如均设置为 `1d`。如需关闭持久登录，可将 `SESSION_COOKIE_MAX_AGE` 设置为 `-1s`，并按需缩短 `SESSION_TIMEOUT`。配置更新需重启后端；已有 Cookie 的有效期不会自动变更，需要重新登录。
+
+## 初始管理员
 ### B. 仅启动前端，连接团队开发后端
 
 适合后端同学已经提供独立联调环境的情况，本机不需要再启动 MySQL、Redis 或 Java。
 
+```bash
+DB_PASSWORD=你的数据库密码
+INITIAL_ADMIN_ENABLED=true
+INITIAL_ADMIN_USERNAME=自定义管理员用户名
+INITIAL_ADMIN_PASSWORD=自定义管理员密码
+INITIAL_ADMIN_DISPLAY_NAME=自定义管理员显示名
 在 `web/.env.local` 中设置：
 
 ```dotenv
@@ -309,6 +322,7 @@ VITE_BACKEND_TARGET=http://127.0.0.1:8080
 
 | 变量 | 说明 |
 | --- | --- |
+| 管理员 | `INITIAL_ADMIN_USERNAME`，未配置时为 `admin` |
 | `MYSQL_ROOT_PASSWORD` | 保持与现有本地 MySQL 密码一致，不要随意更改 |
 | `AGENT_INTERNAL_TOKEN` | 自行生成的强随机内部令牌，建议至少 32 个字符；Java 与 Agent 必须一致 |
 | `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | 本地向量存储依赖的访问凭据，替换模板占位值 |
