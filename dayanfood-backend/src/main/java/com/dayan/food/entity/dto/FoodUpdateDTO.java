@@ -11,7 +11,7 @@ import java.math.BigDecimal;
 
 public record FoodUpdateDTO(
         @NotBlank @Size(max = 100) String name,
-        @NotNull Long regionId,
+        Long regionId,
         @NotNull @DecimalMin("-90") @DecimalMax("90") BigDecimal latitude,
         @NotNull @DecimalMin("-180") @DecimalMax("180") BigDecimal longitude,
         @Size(max = 500) String address,

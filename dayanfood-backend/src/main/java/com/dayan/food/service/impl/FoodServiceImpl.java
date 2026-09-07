@@ -1,5 +1,7 @@
 package com.dayan.food.service.impl;
 
+import com.dayan.food.entity.dto.FoodCreateDTO;
+
 import com.dayan.food.cache.CacheInvalidator;
 import com.dayan.food.entity.dto.FoodUpdateDTO;
 import com.dayan.food.entity.po.Food;
@@ -84,6 +86,13 @@ public class FoodServiceImpl implements FoodService {
                 ).stream()
                 .map(FoodVO::from)
                 .toList();
+    }
+
+    @Override
+    @Cacheable(cacheNames = "wishlistMatchCatalog", key = "'approved'")
+    @Transactional(readOnly = true)
+    public List<FoodVO> matchingCatalog() {
+        return foodMapper.findApprovedForMatching().stream().map(FoodVO::from).toList();
     }
 
     @Override
@@ -224,7 +233,7 @@ public class FoodServiceImpl implements FoodService {
         if (foodMapper.findOwnedById(id, username) == null) {
             throw notFound("只能补全自己上传的菜品");
         }
-        if (regionMapper.findById(request.regionId()) == null) {
+        if (request.regionId() != null && regionMapper.findById(request.regionId()) == null) {
             throw notFound("地区不存在");
         }
 
@@ -317,8 +326,8 @@ public class FoodServiceImpl implements FoodService {
         if (uploader == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录用户不存在");
         }
-        var region = regionMapper.findById(regionId);
-        if (region == null) {
+        var region = regionId == null ? null : regionMapper.findById(regionId);
+        if (regionId != null && region == null) {
             throw notFound("地区不存在");
         }
 
@@ -345,6 +354,7 @@ public class FoodServiceImpl implements FoodService {
         cacheInvalidator.clear(cacheManager.getCache("foodLists"));
         cacheInvalidator.clear(cacheManager.getCache("foodCatalogs"));
         cacheInvalidator.clear(cacheManager.getCache("foodMarkers"));
+        cacheInvalidator.clear(cacheManager.getCache("wishlistMatchCatalog"));
         return FoodVO.from(food);
     }
 
@@ -355,6 +365,18 @@ public class FoodServiceImpl implements FoodService {
             throw notFound("美食不存在");
         }
         clearFoodCaches(id);
+    }
+
+    @Override
+    @Transactional
+    public FoodVO create(FoodCreateDTO request, String username) {
+        FoodVO created = create(request.name(), request.regionId(), request.latitude(),
+                request.longitude(), request.address(), request.summary(), request.story(),
+                request.ingredients(), request.imageUrl(), request.remark(), username);
+        // 保存选点城市到菜品本身，不调用地区创建逻辑。
+        foodMapper.updateLocationLabels(created.id(),
+                normalizeOptional(request.province()), normalizeOptional(request.city()));
+        return FoodVO.from(foodMapper.findOwnedById(created.id(), username));
     }
 
     private ResponseStatusException notFound(String message) {
@@ -405,6 +427,7 @@ public class FoodServiceImpl implements FoodService {
         cacheInvalidator.clear(cacheManager.getCache("foodLists"));
         cacheInvalidator.clear(cacheManager.getCache("foodCatalogs"));
         cacheInvalidator.clear(cacheManager.getCache("foodMarkers"));
+        cacheInvalidator.clear(cacheManager.getCache("wishlistMatchCatalog"));
     }
 
     private String normalizeKeyword(String keyword) {

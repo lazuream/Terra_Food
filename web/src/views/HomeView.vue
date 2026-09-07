@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { ensureMapRegion, getFoodCatalog, getFoodMarkers, getRegions, reverseMapLocation } from '../api'
+import { getFoodCatalog, getFoodMarkers, getRegions, reverseMapLocation } from '../api'
 import { useAuth } from '../auth'
 import FoodMap from '../components/FoodMap.vue'
 import FoodUploadModal from '../components/FoodUploadModal.vue'
@@ -317,7 +317,7 @@ async function pickLocation(latitude: number, longitude: number) {
   } catch (requestError) {
     if (lookupSequence === locationLookupSequence) {
       pickedRegionId.value = undefined
-      locationError.value = t('home.mapRegionError')
+      locationError.value = ''
     }
   } finally {
     if (lookupSequence === locationLookupSequence) {
@@ -385,25 +385,7 @@ async function openUpload() {
     return
   }
 
-  if (!pickedRegionId.value) {
-    if (!pickedProvince.value || !pickedCity.value) {
-      pickHint.value = t('home.mapRegionError')
-      return
-    }
-    locationResolving.value = true
-    try {
-      const region = await ensureMapRegion(pickedProvince.value, pickedCity.value)
-      if (!regions.value.some((item) => item.id === region.id)) {
-        regions.value = [...regions.value, region]
-      }
-      pickedRegionId.value = region.id
-    } catch {
-      pickHint.value = t('home.mapRegionError')
-      return
-    } finally {
-      locationResolving.value = false
-    }
-  }
+  // 地区识别只用于补充地址，不创建地区，也不阻止坐标上传。
 
   pickHint.value = ''
   uploadOpen.value = true
@@ -482,7 +464,6 @@ onMounted(async () => {
         <button
           class="explorer-outline"
           type="button"
-          :disabled="locationResolving"
           @click="openUpload"
         >
           <span>{{ t('home.mapEyebrow') }}</span>
@@ -641,6 +622,8 @@ onMounted(async () => {
     :longitude="pickedLongitude"
     :region-id="pickedRegionId"
     :address="pickedAddress"
+    :province="pickedProvince"
+    :city="pickedCity"
     @close="uploadOpen = false"
     @saved="handleSaved"
   />

@@ -65,8 +65,8 @@
         f.created_by,
         f.created_at,
         r.id AS region_id,
-        r.name AS region_name,
-        r.province AS region_province,
+        COALESCE(NULLIF(f.city, ''), r.name) AS region_name,
+        COALESCE(NULLIF(f.province, ''), r.province) AS region_province,
         r.description AS region_description
     </sql>
 
@@ -96,7 +96,7 @@
     <select id="findList" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         <where>
             <include refid="listConditions"/>
         </where>
@@ -112,10 +112,10 @@
             f.longitude,
             f.summary,
             r.id AS region_id,
-            r.name AS region_name,
-            r.province AS region_province
+            COALESCE(NULLIF(f.city, ''), r.name) AS region_name,
+            COALESCE(NULLIF(f.province, ''), r.province) AS region_province
         FROM food f
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         <where>
             <include refid="listConditions"/>
         </where>
@@ -126,7 +126,7 @@
     <select id="findCatalogPage" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         <where>
             <include refid="listConditions"/>
         </where>
@@ -145,7 +145,7 @@
     <select id="findAdminPage" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         <if test="status != null">
             WHERE f.review_status = #{status}
         </if>
@@ -156,7 +156,7 @@
     <select id="findByCreatedBy" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         WHERE f.created_by = #{username}
         ORDER BY f.created_at DESC, f.id DESC
     </select>
@@ -164,17 +164,25 @@
     <select id="findApprovedByCreatedBy" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         WHERE f.review_status = 'APPROVED'
           AND f.created_by = #{username}
         ORDER BY f.heat DESC, f.id DESC
         LIMIT #{limit}
     </select>
 
+    <select id="findApprovedForMatching" resultMap="foodResultMap">
+        SELECT <include refid="foodColumns"/>
+        FROM food f
+        LEFT JOIN region r ON r.id = f.region_id
+        WHERE f.review_status = 'APPROVED'
+        ORDER BY f.id DESC
+    </select>
+
     <select id="findOwnedById" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         WHERE f.id = #{id}
           AND f.created_by = #{username}
     </select>
@@ -226,10 +234,14 @@
     <select id="findById" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         WHERE f.id = #{id}
           AND f.review_status = 'APPROVED'
     </select>
+
+    <update id="updateLocationLabels">
+        UPDATE food SET province = #{province}, city = #{city} WHERE id = #{id}
+    </update>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO food (
@@ -275,7 +287,7 @@
         FROM food_daily_visit v
         INNER JOIN app_user u ON u.id = v.user_id
         INNER JOIN food f ON f.id = v.food_id
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         WHERE u.username = #{username}
           AND f.review_status = 'APPROVED'
         ORDER BY v.visited_at DESC, f.id DESC
@@ -285,7 +297,7 @@
     <select id="findAgentRecommendations" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
-        INNER JOIN region r ON r.id = f.region_id
+        LEFT JOIN region r ON r.id = f.region_id
         WHERE f.review_status = 'APPROVED'
         <if test="province != null and province != ''">
             AND r.province LIKE CONCAT('%', #{province}, '%')

@@ -6,11 +6,16 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
+  addFavorite,
+  addWishlistItem,
   createFoodComment,
   getFood,
   getFoodComments,
+  getFavoriteStatus,
   getFoodLikeStatus,
+  getWishlistStatus,
   likeFood,
+  removeFavorite,
   unlikeFood,
 } from '../api'
 import { useAuth } from '../auth'
@@ -29,6 +34,10 @@ const commentsLoading = ref(false)
 const submittingComment = ref(false)
 const likeStatus = ref<FoodLikeStatus>({ likeCount: 0, likedByMe: false })
 const liking = ref(false)
+const favorited = ref(false)
+const wishlistListed = ref(false)
+const collectionSaving = ref<'favorite' | 'wishlist'>()
+const collectionError = ref('')
 const { t, locale } = useI18n()
 
 let foodLoadController: AbortController | undefined
@@ -108,6 +117,47 @@ async function toggleLike() {
     liking.value = false
   }
 }
+
+async function toggleFavorite() {
+  if (!currentUser.value) {
+    await router.push({ path: '/login', query: { redirect: route.fullPath } })
+    return
+  }
+  if (collectionSaving.value) return
+  collectionSaving.value = 'favorite'
+  collectionError.value = ''
+  try {
+    favorited.value = favorited.value
+      ? (await removeFavorite(Number(route.params.id))).favorited
+      : (await addFavorite(Number(route.params.id))).favorited
+  } catch {
+    collectionError.value = t('detail.favoriteError')
+  } finally {
+    collectionSaving.value = undefined
+  }
+}
+
+async function addToWishlist() {
+  if (!currentUser.value) {
+    await router.push({ path: '/login', query: { redirect: route.fullPath } })
+    return
+  }
+  if (wishlistListed.value) {
+    await router.push({ path: '/profile', query: { tab: 'wishlist' } })
+    return
+  }
+  if (collectionSaving.value) return
+  collectionSaving.value = 'wishlist'
+  collectionError.value = ''
+  try {
+    await addWishlistItem({ foodId: Number(route.params.id) })
+    wishlistListed.value = true
+  } catch {
+    collectionError.value = t('detail.wishlistError')
+  } finally {
+    collectionSaving.value = undefined
+  }
+}
 // 组件复用时随路由 id 变化重新加载（安全报告 6.6），旧请求用 AbortController 丢弃。
 watch(
   () => route.params.id,
@@ -118,15 +168,22 @@ watch(
     food.value = undefined
     comments.value = []
     likeStatus.value = { likeCount: 0, likedByMe: false }
+    favorited.value = false
+    wishlistListed.value = false
+    collectionError.value = ''
     error.value = ''
 
     try {
       food.value = await getFood(foodIdValue)
-      const [likeSnapshot] = await Promise.all([
+      const [likeSnapshot, favoriteSnapshot, wishlistSnapshot] = await Promise.all([
         getFoodLikeStatus(foodIdValue),
+        currentUser.value ? getFavoriteStatus(foodIdValue) : Promise.resolve({ favorited: false }),
+        currentUser.value ? getWishlistStatus(foodIdValue) : Promise.resolve({ listed: false }),
         loadComments(foodIdValue),
       ])
       likeStatus.value = likeSnapshot
+      favorited.value = favoriteSnapshot.favorited
+      wishlistListed.value = wishlistSnapshot.listed
     } catch {
       error.value = t('detail.notFound')
     }
@@ -155,16 +212,39 @@ onBeforeUnmount(() => {
         <small>{{ food.region.province }} · {{ food.region.name }}</small>
         <h1>{{ food.name }}</h1>
         <p>{{ food.summary }}</p>
-        <button
-          class="like-button"
-          :class="{ liked: likeStatus.likedByMe }"
-          :disabled="liking"
-          type="button"
-          @click="toggleLike"
-        >
-          <span aria-hidden="true">{{ likeStatus.likedByMe ? '♥' : '♡' }}</span>
-          {{ t('detail.likeCount', { count: likeStatus.likeCount }) }}
-        </button>
+        <div class="collection-actions">
+          <button
+            class="like-button"
+            :class="{ liked: likeStatus.likedByMe }"
+            :disabled="liking"
+            type="button"
+            @click="toggleLike"
+          >
+            <span aria-hidden="true">{{ likeStatus.likedByMe ? '♥' : '♡' }}</span>
+            {{ t('detail.likeCount', { count: likeStatus.likeCount }) }}
+          </button>
+          <button
+            class="collection-button"
+            :class="{ active: favorited }"
+            :disabled="collectionSaving !== undefined"
+            type="button"
+            @click="toggleFavorite"
+          >
+            <span aria-hidden="true">{{ favorited ? '★' : '☆' }}</span>
+            {{ favorited ? t('detail.favorited') : t('detail.favorite') }}
+          </button>
+          <button
+            class="collection-button"
+            :class="{ active: wishlistListed }"
+            :disabled="collectionSaving !== undefined"
+            type="button"
+            @click="addToWishlist"
+          >
+            <span aria-hidden="true">＋</span>
+            {{ wishlistListed ? t('detail.wishlistAdded') : t('detail.addWishlist') }}
+          </button>
+        </div>
+        <p v-if="collectionError" class="collection-action-error" aria-live="polite">{{ collectionError }}</p>
       </div>
     </div>
 

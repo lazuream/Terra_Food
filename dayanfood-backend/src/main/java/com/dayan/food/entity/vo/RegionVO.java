@@ -19,6 +19,8 @@ public record RegionVO(
     }
 
     public static RegionVO from(Region region, CityCenterVO center) {
+        // 未关联地区的菜品仍可展示；占位信息不写入地区表。
+        if (region == null) return new RegionVO(null, "", "", "", null, null);
         return new RegionVO(
                 region.getId(),
                 region.getName(),

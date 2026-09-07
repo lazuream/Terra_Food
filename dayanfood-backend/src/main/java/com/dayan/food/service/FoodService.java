@@ -1,6 +1,7 @@
 package com.dayan.food.service;
 
 import com.dayan.food.entity.dto.FoodUpdateDTO;
+import com.dayan.food.entity.dto.FoodCreateDTO;
 import com.dayan.food.entity.vo.FoodVO;
 import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.entity.vo.FoodFootprintVO;
@@ -12,6 +13,8 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public interface FoodService {
+
+    FoodVO create(FoodCreateDTO request, String username);
 
     List<FoodVO> list(
             String keyword,
@@ -36,6 +39,8 @@ public interface FoodService {
     FoodPageVO listForAdmin(int page, int pageSize, FoodReviewStatus status);
 
     List<FoodVO> listMine(String username);
+
+    List<FoodVO> matchingCatalog();
 
     List<FoodFootprintVO> listRecentVisits(String username, int limit);
 

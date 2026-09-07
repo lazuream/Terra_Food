@@ -13,6 +13,7 @@ import type {
   FoodCommentCreatePayload,
   FoodCreatePayload,
   FoodLikeStatus,
+  FavoriteStatus,
   FoodUpdatePayload,
   FoodImportResult,
   FoodMarker,
@@ -31,6 +32,9 @@ import type {
   SendPasswordResetCodePayload,
   UserPublic,
   ReviewItemPayload,
+  WishlistItem,
+  WishlistItemCreatePayload,
+  WishlistStatus,
 } from './types'
 
 interface FoodQuery extends Partial<MapBounds> {
@@ -409,6 +413,45 @@ export async function login(payload: LoginPayload): Promise<AuthUser> {
   // 登录响应会等待用户信息与地图菜品完成 Redis 预热；首次冷缓存可能超过全局 8 秒。
   const response = await api.post<AuthUser>('/auth/login', payload, { timeout: 60_000 })
   return response.data
+}
+
+export async function getMyFavorites(): Promise<Food[]> {
+  const response = await api.get<Food[]>('/profile/favorites')
+  return response.data
+}
+
+export async function getFavoriteStatus(foodId: number): Promise<FavoriteStatus> {
+  const response = await api.get<FavoriteStatus>('/profile/favorites/' + foodId + '/status')
+  return response.data
+}
+
+export async function addFavorite(foodId: number): Promise<FavoriteStatus> {
+  const response = await api.post<FavoriteStatus>('/profile/favorites/' + foodId)
+  return response.data
+}
+
+export async function removeFavorite(foodId: number): Promise<FavoriteStatus> {
+  const response = await api.delete<FavoriteStatus>('/profile/favorites/' + foodId)
+  return response.data
+}
+
+export async function getMyWishlist(): Promise<WishlistItem[]> {
+  const response = await api.get<WishlistItem[]>('/profile/wishlist')
+  return response.data
+}
+
+export async function getWishlistStatus(foodId: number): Promise<WishlistStatus> {
+  const response = await api.get<WishlistStatus>('/profile/wishlist/foods/' + foodId + '/status')
+  return response.data
+}
+
+export async function addWishlistItem(payload: WishlistItemCreatePayload): Promise<WishlistItem> {
+  const response = await api.post<WishlistItem>('/profile/wishlist', payload)
+  return response.data
+}
+
+export async function deleteWishlistItem(id: number): Promise<void> {
+  await api.delete('/profile/wishlist/' + id)
 }
 
 export async function register(payload: RegisterPayload): Promise<AuthUser> {

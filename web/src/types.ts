@@ -142,13 +142,51 @@ export interface FoodLikeStatus {
   likedByMe: boolean
 }
 
+export interface FavoriteStatus {
+  favorited: boolean
+}
+
+export type WishlistMatchField =
+  | 'NAME'
+  | 'INGREDIENTS'
+  | 'REGION'
+  | 'SUMMARY'
+  | 'STORY'
+  | 'ADDRESS'
+  | 'DIRECT'
+
+export interface WishlistMatch {
+  food: Food
+  score: number
+  matchedFields: WishlistMatchField[]
+}
+
+export interface WishlistItem {
+  id: number
+  content: string
+  sourceFoodId?: number
+  createdAt: string
+  matches: WishlistMatch[]
+}
+
+export interface WishlistItemCreatePayload {
+  content?: string
+  foodId?: number
+}
+
+export interface WishlistStatus {
+  listed: boolean
+}
+
 export interface FoodReviewPayload {
   status: Extract<FoodReviewStatus, 'APPROVED' | 'REJECTED'>
 }
 
 export interface FoodCreatePayload {
   name: string
-  regionId: number
+  province?: string
+  city?: string
+  regionId?: number
   latitude: number
   longitude: number
   address?: string

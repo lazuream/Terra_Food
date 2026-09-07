@@ -2,18 +2,27 @@
 import axios from 'axios'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 
-import { deleteEtching, getAchievements, getMyEtchings, getMyFoods, getMyFootprints, getRegions, selectAchievement, selectEtching, updateAvatar, updateMyDisplayName, updateMySignature, uploadImage } from '../api'
+import { addWishlistItem, deleteEtching, deleteWishlistItem, getAchievements, getMyEtchings, getMyFavorites, getMyFoods, getMyFootprints, getMyWishlist, getRegions, removeFavorite, selectAchievement, selectEtching, updateAvatar, updateMyDisplayName, updateMySignature, uploadImage } from '../api'
 import { useAuth } from '../auth'
 import FoodEditModal from '../components/FoodEditModal.vue'
 import EtchingStudio from '../components/EtchingStudio.vue'
 import HexEtching from '../components/HexEtching.vue'
-import type { Achievement, EtchingDesign, Food, FoodFootprint, FoodReviewStatus, Region, SignatureStatus } from '../types'
+import type { Achievement, EtchingDesign, Food, FoodFootprint, FoodReviewStatus, Region, SignatureStatus, WishlistItem, WishlistMatchField } from '../types'
 
 const { locale, t } = useI18n()
+const route = useRoute()
 const auth = useAuth()
 const foods = ref<Food[]>([])
 const footprints = ref<FoodFootprint[]>([])
+const favorites = ref<Food[]>([])
+const wishlist = ref<WishlistItem[]>([])
+const collectionTab = ref<'favorites' | 'wishlist'>(route.query.tab === 'wishlist' ? 'wishlist' : 'favorites')
+const wishlistDraft = ref('')
+const wishlistSaving = ref(false)
+const collectionRemoving = ref<string>()
+const collectionError = ref('')
 const regions = ref<Region[]>([])
 const achievements = ref<Achievement[]>([])
 const etchings = ref<EtchingDesign[]>([])
@@ -65,6 +74,59 @@ function formatDate(value: string) {
     month: 'short',
     day: 'numeric',
   }).format(new Date(value))
+}
+
+function matchReason(fields: WishlistMatchField[]) {
+  return fields.map((field) => t(`profile.matchField.${field.toLowerCase()}`)).join(' · ')
+}
+
+async function createWishlistItem() {
+  const content = wishlistDraft.value.trim()
+  if (content.length < 2) {
+    collectionError.value = t('profile.wishlistRequired')
+    return
+  }
+  wishlistSaving.value = true
+  collectionError.value = ''
+  try {
+    const created = await addWishlistItem({ content })
+    wishlist.value.unshift(created)
+    wishlistDraft.value = ''
+  } catch (requestError) {
+    collectionError.value = axios.isAxiosError(requestError)
+      ? requestError.response?.data?.message || t('profile.collectionError')
+      : t('profile.collectionError')
+  } finally {
+    wishlistSaving.value = false
+  }
+}
+
+async function removeFavoriteItem(food: Food) {
+  if (!window.confirm(t('profile.removeFavoriteConfirm', { name: food.name }))) return
+  collectionRemoving.value = `favorite-${food.id}`
+  collectionError.value = ''
+  try {
+    await removeFavorite(food.id)
+    favorites.value = favorites.value.filter((item) => item.id !== food.id)
+  } catch {
+    collectionError.value = t('profile.collectionError')
+  } finally {
+    collectionRemoving.value = undefined
+  }
+}
+
+async function removeWishlistItem(item: WishlistItem) {
+  if (!window.confirm(t('profile.wishlistDeleteConfirm', { name: item.content }))) return
+  collectionRemoving.value = `wishlist-${item.id}`
+  collectionError.value = ''
+  try {
+    await deleteWishlistItem(item.id)
+    wishlist.value = wishlist.value.filter((candidate) => candidate.id !== item.id)
+  } catch {
+    collectionError.value = t('profile.collectionError')
+  } finally {
+    collectionRemoving.value = undefined
+  }
 }
 
 function handleSaved(updated: Food) {
@@ -194,12 +256,14 @@ async function changeAvatar(event: Event) {
 
 onMounted(async () => {
   try {
-    ;[foods.value, footprints.value, regions.value, achievements.value, etchings.value] = await Promise.all([
+    ;[foods.value, footprints.value, regions.value, achievements.value, etchings.value, favorites.value, wishlist.value] = await Promise.all([
       getMyFoods(),
       getMyFootprints(),
       getRegions(),
       getAchievements(),
       getMyEtchings(),
+      getMyFavorites(),
+      getMyWishlist(),
     ])
   } catch {
     error.value = t('profile.loadError')
@@ -311,6 +375,108 @@ onMounted(async () => {
         <article><strong>{{ statusCounts.approved }}</strong><span>{{ t('profile.status.approved') }}</span></article>
         <article><strong>{{ statusCounts.rejected }}</strong><span>{{ t('profile.status.rejected') }}</span></article>
       </div>
+    </section>
+
+    <section class="collection-panel">
+      <div class="collection-heading">
+        <div>
+          <small>{{ t('profile.collectionsEyebrow') }}</small>
+          <h2>{{ t('profile.collectionsTitle') }}</h2>
+        </div>
+        <p>{{ t('profile.collectionsHint') }}</p>
+      </div>
+      <div class="collection-tabs" role="tablist" :aria-label="t('profile.collectionsTitle')">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="collectionTab === 'favorites'"
+          :class="{ active: collectionTab === 'favorites' }"
+          @click="collectionTab = 'favorites'"
+        >
+          {{ t('profile.favoritesTab') }} <span>{{ favorites.length }}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="collectionTab === 'wishlist'"
+          :class="{ active: collectionTab === 'wishlist' }"
+          @click="collectionTab = 'wishlist'"
+        >
+          {{ t('profile.wishlistTab') }} <span>{{ wishlist.length }}</span>
+        </button>
+      </div>
+
+      <p v-if="collectionError" class="collection-error" aria-live="polite">{{ collectionError }}</p>
+      <template v-if="collectionTab === 'favorites'">
+        <div v-if="favorites.length" class="favorite-grid">
+          <article v-for="food in favorites" :key="food.id" class="favorite-card">
+            <RouterLink :to="`/foods/${food.id}`" class="favorite-cover">
+              <img v-if="food.imageUrl" :src="food.imageUrl" :alt="food.name">
+              <span v-else>{{ food.name.slice(0, 1) }}</span>
+            </RouterLink>
+            <div>
+              <small>{{ food.region.province }} · {{ food.region.name }}</small>
+              <h3><RouterLink :to="`/foods/${food.id}`">{{ food.name }}</RouterLink></h3>
+              <button
+                type="button"
+                :disabled="collectionRemoving === `favorite-${food.id}`"
+                @click="removeFavoriteItem(food)"
+              >{{ t('profile.removeFavorite') }}</button>
+            </div>
+          </article>
+        </div>
+        <div v-else-if="!loading" class="collection-empty">
+          <p>{{ t('profile.favoriteEmpty') }}</p>
+          <RouterLink to="/">{{ t('profile.browseFoods') }}</RouterLink>
+        </div>
+      </template>
+
+      <template v-else>
+        <form class="wishlist-form" @submit.prevent="createWishlistItem">
+          <label for="wishlist-content">{{ t('profile.wishlistAddHint') }}</label>
+          <div>
+            <input
+              id="wishlist-content"
+              v-model="wishlistDraft"
+              maxlength="100"
+              :placeholder="t('profile.wishlistPlaceholder')"
+            >
+            <button type="submit" :disabled="wishlistSaving">
+              {{ wishlistSaving ? t('profile.wishlistSaving') : t('profile.wishlistAdd') }}
+            </button>
+          </div>
+        </form>
+        <div v-if="wishlist.length" class="wishlist-list">
+          <article v-for="item in wishlist" :key="item.id" class="wishlist-card">
+            <header>
+              <div>
+                <h3>{{ item.content }}</h3>
+                <time>{{ formatDate(item.createdAt) }}</time>
+              </div>
+              <button
+                type="button"
+                :disabled="collectionRemoving === `wishlist-${item.id}`"
+                @click="removeWishlistItem(item)"
+              >{{ t('profile.wishlistDelete') }}</button>
+            </header>
+            <div v-if="item.matches.length" class="wishlist-matches">
+              <strong>{{ t('profile.wishlistMatchTitle') }}</strong>
+              <RouterLink v-for="match in item.matches" :key="match.food.id" :to="`/foods/${match.food.id}`">
+                <img v-if="match.food.imageUrl" :src="match.food.imageUrl" :alt="match.food.name">
+                <span v-else class="wishlist-match-fallback">{{ match.food.name.slice(0, 1) }}</span>
+                <span>
+                  <b>{{ match.food.name }}</b>
+                  <small>{{ match.food.region.province }} · {{ match.food.region.name }}</small>
+                  <em>{{ t('profile.wishlistMatchReason', { fields: matchReason(match.matchedFields) }) }}</em>
+                </span>
+                <i aria-hidden="true">→</i>
+              </RouterLink>
+            </div>
+            <p v-else class="wishlist-no-match">{{ t('profile.wishlistNoMatch') }}</p>
+          </article>
+        </div>
+        <div v-else-if="!loading" class="collection-empty"><p>{{ t('profile.wishlistEmpty') }}</p></div>
+      </template>
     </section>
 
     <section class="profile-layout">
