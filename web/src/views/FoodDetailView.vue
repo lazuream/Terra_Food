@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { defineAsyncComponent, computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -19,7 +19,11 @@ import {
   unlikeFood,
 } from '../api'
 import { useAuth } from '../auth'
+import { apiErrorMessage } from '../apiError'
 import type { Food, FoodComment, FoodLikeStatus } from '../types'
+
+const FoodShareModal = defineAsyncComponent(() => import('../components/FoodShareModal.vue'))
+const shareOpen = ref(false)
 
 const route = useRoute()
 const router = useRouter()
@@ -34,10 +38,11 @@ const commentsLoading = ref(false)
 const submittingComment = ref(false)
 const likeStatus = ref<FoodLikeStatus>({ likeCount: 0, likedByMe: false })
 const liking = ref(false)
-const favorited = ref(false)
+const favorited = ref<boolean | null>(null)
 const wishlistListed = ref(false)
 const collectionSaving = ref<'favorite' | 'wishlist'>()
 const collectionError = ref('')
+const statusLoading = ref(true)
 const { t, locale } = useI18n()
 
 let foodLoadController: AbortController | undefined
@@ -60,14 +65,18 @@ function formatDate(value: string): string {
 }
 
 async function loadComments(foodIdValue: number) {
+  const signal = foodLoadController?.signal
   commentsLoading.value = true
   commentError.value = ''
   try {
-    comments.value = await getFoodComments(foodIdValue)
+    const result = await getFoodComments(foodIdValue)
+    if (signal?.aborted || Number(route.params.id) !== foodIdValue) return
+    comments.value = result
   } catch {
+    if (signal?.aborted) return
     commentError.value = t('detail.commentLoadError')
   } finally {
-    commentsLoading.value = false
+    if (!signal?.aborted) commentsLoading.value = false
   }
 }
 
@@ -78,18 +87,21 @@ async function submitComment() {
     return
   }
 
+  const signal = foodLoadController?.signal
   submittingComment.value = true
   commentError.value = ''
   try {
     const comment = await createFoodComment(Number(route.params.id), { content })
+    if (signal?.aborted) return
     comments.value.unshift(comment)
     commentContent.value = ''
   } catch (requestError) {
+    if (signal?.aborted) return
     commentError.value = axios.isAxiosError(requestError)
       ? requestError.response?.data?.message || t('detail.commentSubmitError')
       : t('detail.commentSubmitError')
   } finally {
-    submittingComment.value = false
+    if (!signal?.aborted) submittingComment.value = false
   }
 }
 
@@ -106,15 +118,17 @@ async function toggleLike() {
   if (liking.value) return
 
   const activeFoodId = Number(route.params.id)
+  const signal = foodLoadController?.signal
   liking.value = true
   try {
-    likeStatus.value = likeStatus.value.likedByMe
+    const result = likeStatus.value.likedByMe
       ? await unlikeFood(activeFoodId)
       : await likeFood(activeFoodId)
+    if (!signal?.aborted) likeStatus.value = result
   } catch {
-    commentError.value = t('detail.likeError')
+    if (!signal?.aborted) commentError.value = t('detail.likeError')
   } finally {
-    liking.value = false
+    if (!signal?.aborted) liking.value = false
   }
 }
 
@@ -124,16 +138,19 @@ async function toggleFavorite() {
     return
   }
   if (collectionSaving.value) return
+  const foodId = Number(route.params.id)
+  const signal = foodLoadController?.signal
   collectionSaving.value = 'favorite'
   collectionError.value = ''
   try {
-    favorited.value = favorited.value
-      ? (await removeFavorite(Number(route.params.id))).favorited
-      : (await addFavorite(Number(route.params.id))).favorited
-  } catch {
-    collectionError.value = t('detail.favoriteError')
+    const previous = favorited.value ?? (await getFavoriteStatus(foodId)).favorited
+    if (signal?.aborted) return
+    const result = previous ? await removeFavorite(foodId) : await addFavorite(foodId)
+    if (!signal?.aborted) favorited.value = result.favorited
+  } catch (cause) {
+    if (!signal?.aborted) collectionError.value = apiErrorMessage(cause, t('detail.favoriteError'))
   } finally {
-    collectionSaving.value = undefined
+    if (!signal?.aborted) collectionSaving.value = undefined
   }
 }
 
@@ -147,46 +164,64 @@ async function addToWishlist() {
     return
   }
   if (collectionSaving.value) return
+  const signal = foodLoadController?.signal
   collectionSaving.value = 'wishlist'
   collectionError.value = ''
   try {
     await addWishlistItem({ foodId: Number(route.params.id) })
-    wishlistListed.value = true
-  } catch {
-    collectionError.value = t('detail.wishlistError')
+    if (!signal?.aborted) wishlistListed.value = true
+  } catch (cause) {
+    if (!signal?.aborted) collectionError.value = apiErrorMessage(cause, t('detail.wishlistError'))
   } finally {
-    collectionSaving.value = undefined
+    if (!signal?.aborted) collectionSaving.value = undefined
   }
 }
 // 组件复用时随路由 id 变化重新加载（安全报告 6.6），旧请求用 AbortController 丢弃。
 watch(
-  () => route.params.id,
-  async (id) => {
+  () => [route.params.id, currentUser.value?.id],
+  async ([id]) => {
     const foodIdValue = Number(id)
+    shareOpen.value = false
     foodLoadController?.abort()
     foodLoadController = new AbortController()
+    const signal = foodLoadController.signal
+    statusLoading.value = true
     food.value = undefined
     comments.value = []
     likeStatus.value = { likeCount: 0, likedByMe: false }
-    favorited.value = false
+    favorited.value = null
     wishlistListed.value = false
+    collectionSaving.value = undefined
+    liking.value = false
+    submittingComment.value = false
+    commentContent.value = ''
+    commentError.value = ''
     collectionError.value = ''
     error.value = ''
 
     try {
-      food.value = await getFood(foodIdValue)
-      const [likeSnapshot, favoriteSnapshot, wishlistSnapshot] = await Promise.all([
-        getFoodLikeStatus(foodIdValue),
-        currentUser.value ? getFavoriteStatus(foodIdValue) : Promise.resolve({ favorited: false }),
-        currentUser.value ? getWishlistStatus(foodIdValue) : Promise.resolve({ listed: false }),
-        loadComments(foodIdValue),
-      ])
-      likeStatus.value = likeSnapshot
-      favorited.value = favoriteSnapshot.favorited
-      wishlistListed.value = wishlistSnapshot.listed
+      const loaded = await getFood(foodIdValue)
+      if (signal.aborted) return
+      food.value = loaded
     } catch {
-      error.value = t('detail.notFound')
+      if (!signal.aborted) error.value = t('detail.notFound')
+      return
     }
+    // Failures in optional status endpoints must not erase successful responses.
+    const results = await Promise.allSettled([
+      getFoodLikeStatus(foodIdValue),
+      currentUser.value ? getFavoriteStatus(foodIdValue) : Promise.resolve({ favorited: false }),
+      currentUser.value ? getWishlistStatus(foodIdValue) : Promise.resolve({ listed: false }),
+      loadComments(foodIdValue),
+    ])
+    if (signal.aborted) return
+    statusLoading.value = false
+    const [likes, favorite, wishlist] = results
+    if (likes.status === 'fulfilled' && !liking.value) likeStatus.value = likes.value
+    if (favorite.status === 'fulfilled' && !collectionSaving.value) favorited.value = favorite.value.favorited
+    if (wishlist.status === 'fulfilled' && !collectionSaving.value) wishlistListed.value = wishlist.value.listed
+    if (favorite.status === 'rejected') collectionError.value = apiErrorMessage(favorite.reason, t('detail.favoriteError'))
+    else if (wishlist.status === 'rejected') collectionError.value = apiErrorMessage(wishlist.reason, t('detail.wishlistError'))
   },
   { immediate: true },
 )
@@ -208,6 +243,10 @@ onBeforeUnmount(() => {
     </RouterLink>
 
     <div class="detail-hero" :style="heroStyle">
+      <button type="button" class="food-share-button" @click="shareOpen = true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m9 8 6-3m-6 11 6 3"/><circle cx="6" cy="12" r="4"/><circle cx="18" cy="4" r="3"/><circle cx="18" cy="20" r="3"/></svg>
+        {{ t('share.open') }}
+      </button>
       <div>
         <small>{{ food.region.province }} · {{ food.region.name }}</small>
         <h1>{{ food.name }}</h1>
@@ -216,7 +255,7 @@ onBeforeUnmount(() => {
           <button
             class="like-button"
             :class="{ liked: likeStatus.likedByMe }"
-            :disabled="liking"
+            :disabled="statusLoading || liking"
             type="button"
             @click="toggleLike"
           >
@@ -226,7 +265,7 @@ onBeforeUnmount(() => {
           <button
             class="collection-button"
             :class="{ active: favorited }"
-            :disabled="collectionSaving !== undefined"
+            :disabled="statusLoading || collectionSaving !== undefined"
             type="button"
             @click="toggleFavorite"
           >
@@ -236,7 +275,7 @@ onBeforeUnmount(() => {
           <button
             class="collection-button"
             :class="{ active: wishlistListed }"
-            :disabled="collectionSaving !== undefined"
+            :disabled="statusLoading || collectionSaving !== undefined"
             type="button"
             @click="addToWishlist"
           >
@@ -247,6 +286,8 @@ onBeforeUnmount(() => {
         <p v-if="collectionError" class="collection-action-error" aria-live="polite">{{ collectionError }}</p>
       </div>
     </div>
+
+    <FoodShareModal v-if="shareOpen" :food="food" @close="shareOpen = false" />
 
     <section class="food-creator">
       <RouterLink

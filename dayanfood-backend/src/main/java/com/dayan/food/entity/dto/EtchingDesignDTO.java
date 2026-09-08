@@ -16,6 +16,6 @@ public record EtchingDesignDTO(
         @Valid
         @NotNull(message = "画布不能为空")
         @Size(min = 169, max = 169, message = "画布必须包含169个六角章格")
-        List<@Pattern(regexp = "^(?:|#[0-9A-Fa-f]{6})$", message = "章格颜色必须为空或六位十六进制颜色") String> layerOne
+        List<@NotNull(message = "章格颜色不能为null") @Pattern(regexp = "^(?:|#[0-9A-Fa-f]{6})$", message = "章格颜色必须为空或六位十六进制颜色") String> layerOne
 ) {
 }

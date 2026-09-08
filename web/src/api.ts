@@ -4,6 +4,7 @@ import type { AgentChatPayload, AgentChatResponse, FoodFootprint } from './types
 
 import type {
   Achievement,
+  ProfileStats,
   AuthUser,
   CaptchaChallenge,
   Food,
@@ -133,6 +134,7 @@ export async function createFoodComment(
 
 export async function getRegions(): Promise<Region[]> {
   const response = await api.get<Region[]>('/regions')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
   return response.data
 }
 
@@ -373,13 +375,20 @@ export async function createFood(payload: FoodCreatePayload): Promise<Food> {
   return response.data
 }
 
+export async function getMyProfileStats(): Promise<ProfileStats> {
+  const response = await api.get<ProfileStats>('/profile/stats')
+  return response.data
+}
+
 export async function getMyFoods(): Promise<Food[]> {
   const response = await api.get<Food[]>('/profile/foods')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
   return response.data
 }
 
 export async function getMyFootprints(limit = 20): Promise<FoodFootprint[]> {
   const response = await api.get<FoodFootprint[]>('/profile/footprints', { params: { limit } })
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
   return response.data
 }
 
@@ -417,26 +426,37 @@ export async function login(payload: LoginPayload): Promise<AuthUser> {
 
 export async function getMyFavorites(): Promise<Food[]> {
   const response = await api.get<Food[]>('/profile/favorites')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
   return response.data
 }
 
 export async function getFavoriteStatus(foodId: number): Promise<FavoriteStatus> {
   const response = await api.get<FavoriteStatus>('/profile/favorites/' + foodId + '/status')
+  if (!response.data || typeof response.data.favorited !== 'boolean') {
+    throw new Error('Invalid favorite response')
+  }
   return response.data
 }
 
 export async function addFavorite(foodId: number): Promise<FavoriteStatus> {
   const response = await api.post<FavoriteStatus>('/profile/favorites/' + foodId)
+  if (!response.data || typeof response.data.favorited !== 'boolean') {
+    throw new Error('Invalid favorite response')
+  }
   return response.data
 }
 
 export async function removeFavorite(foodId: number): Promise<FavoriteStatus> {
   const response = await api.delete<FavoriteStatus>('/profile/favorites/' + foodId)
+  if (!response.data || typeof response.data.favorited !== 'boolean') {
+    throw new Error('Invalid favorite response')
+  }
   return response.data
 }
 
 export async function getMyWishlist(): Promise<WishlistItem[]> {
   const response = await api.get<WishlistItem[]>('/profile/wishlist')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
   return response.data
 }
 
@@ -505,6 +525,7 @@ export async function reviewUserItem(
 
 export async function getAchievements(): Promise<Achievement[]> {
   const response = await api.get<Achievement[]>('/achievements/me')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
   return response.data
 }
 
@@ -524,14 +545,21 @@ export async function selectAchievement(achievementId: number): Promise<Achievem
 
 export async function getMyEtchings(): Promise<EtchingDesign[]> {
   const response = await api.get<EtchingDesign[]>('/etchings/me')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
   return response.data
 }
 export async function createEtching(payload: EtchingDesignPayload): Promise<EtchingDesign> {
   const response = await api.post<EtchingDesign>('/etchings', payload)
+  if (!response.data || !Number.isSafeInteger(response.data.id) || !Array.isArray(response.data.layerOne)) {
+    throw new Error('Invalid etching response')
+  }
   return response.data
 }
 export async function updateEtching(id: number, payload: EtchingDesignPayload): Promise<EtchingDesign> {
   const response = await api.put<EtchingDesign>(`/etchings/${id}`, payload)
+  if (!response.data || !Number.isSafeInteger(response.data.id) || !Array.isArray(response.data.layerOne)) {
+    throw new Error('Invalid etching response')
+  }
   return response.data
 }
 export async function deleteEtching(id: number): Promise<void> { await api.delete(`/etchings/${id}`) }

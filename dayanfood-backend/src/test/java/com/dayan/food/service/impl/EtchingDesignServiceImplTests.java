@@ -71,6 +71,27 @@ class EtchingDesignServiceImplTests {
         verify(achievementMapper).clearSelection("reader");
     }
 
+    @Test void identicalUpdateDoesNotTreatZeroChangedRowsAsMissing() {
+        EtchingDesign design = new EtchingDesign(7L, "单层章", jsonLayer(), "[]");
+        ReflectionTestUtils.setField(design, "id", 3L);
+        when(etchingDesignMapper.findOwnedById(3L, "reader")).thenReturn(design);
+        assertEquals(3L, service.update("reader", 3L, paintedRequest()).id());
+    }
+
+    @Test void invalidColorIsRejectedBeforePersistence() {
+        var colors = new ArrayList<>(paintedRequest().layerOne());
+        colors.set(0, null);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.update("reader", 3L, new EtchingDesignDTO("Invalid", colors)));
+        verify(etchingDesignMapper, never()).findOwnedById(3L, "reader");
+    }
+
+    @Test void selectingSomeoneElsesDesignDoesNotClearCurrentSelection() {
+        assertThrows(IllegalArgumentException.class, () -> service.select("reader", 99L));
+        verify(etchingDesignMapper, never()).clearSelection("reader");
+        verify(achievementMapper, never()).clearSelection("reader");
+    }
+
     private EtchingDesignDTO paintedRequest() {
         var one = new ArrayList<String>();
         for (int index = 0; index < 169; index++) one.add(index == 0 ? "#9A352E" : "");
