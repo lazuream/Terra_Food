@@ -1,3 +1,8 @@
+export interface ProfileStats {
+  viewedFoodCount: number
+  favoriteCount: number
+}
+
 export interface Region {
   id: number
   name: string

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dayan.food.mapper.ProfileStatsMapper">
+    <!-- Count all distinct visited dishes, not the capped recent-footprints list. -->
+    <select id="findByUserId" resultType="com.dayan.food.entity.po.ProfileStats">
+        SELECT
+            (SELECT COUNT(DISTINCT v.food_id) FROM food_daily_visit v
+             INNER JOIN food f ON f.id = v.food_id AND f.review_status = 'APPROVED'
+             WHERE v.user_id = #{userId}) AS viewed_food_count,
+            (SELECT COUNT(*) FROM food_favorite favorite
+             INNER JOIN food f ON f.id = favorite.food_id AND f.review_status = 'APPROVED'
+             WHERE favorite.user_id = #{userId}) AS favorite_count
+    </select>
+</mapper>

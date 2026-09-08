@@ -397,3 +397,12 @@
     min-height: 44px;
   }
 }
+
+.detail-hero { position: relative; }
+.food-share-button {
+  position: absolute; top: 20px; right: 20px; display: inline-flex;
+  align-items: center; gap: 8px; padding: 10px 16px; color: white;
+  background: var(--color-accent); border: 1px solid #d8cbb8; cursor: pointer; font: inherit;
+}
+.food-share-button:hover { background: #64221d; }
+.food-share-button:focus-visible { outline: 3px solid #efe1c9; outline-offset: 3px; }

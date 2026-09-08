@@ -61,9 +61,9 @@ public class EtchingDesignServiceImpl implements EtchingDesignService {
     @Override @Transactional
     public EtchingDesignVO update(String username, Long id, EtchingDesignDTO request) {
         ensurePainted(request);
-        if (etchingDesignMapper.updateOwned(id, username, request.name().trim(), json(request.layerOne())) != 1) {
-            throw new IllegalArgumentException("蚀刻章不存在或不属于当前用户");
-        }
+        requiredOwned(id, username);
+        // MySQL may report zero changed rows for an identical save.
+        etchingDesignMapper.updateOwned(id, username, request.name().trim(), json(request.layerOne()));
         return toVO(requiredOwned(id, username));
     }
 
@@ -74,6 +74,7 @@ public class EtchingDesignServiceImpl implements EtchingDesignService {
 
     @Override @Transactional
     public EtchingDesignVO select(String username, Long id) {
+        requiredOwned(id, username);
         etchingDesignMapper.clearSelection(username);
         achievementMapper.clearSelection(username);
         if (etchingDesignMapper.selectOwned(id, username) != 1) throw new IllegalArgumentException("只能展示自己创建的蚀刻章");
@@ -87,6 +88,10 @@ public class EtchingDesignServiceImpl implements EtchingDesignService {
     }
 
     private void ensurePainted(EtchingDesignDTO request) {
+        if (request.layerOne() == null || request.layerOne().size() != 169
+                || request.layerOne().stream().anyMatch(color -> color == null || !color.matches("(?:|#[0-9A-Fa-f]{6})"))) {
+            throw new IllegalArgumentException("画布必须包含169个有效章格颜色");
+        }
         if (request.layerOne().stream().allMatch(String::isBlank)) {
             throw new IllegalArgumentException("请至少为一个六角章格上色");
         }

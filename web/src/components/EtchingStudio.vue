@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { createEtching, updateEtching } from '../api'
+import { apiErrorMessage } from '../apiError'
 import type { EtchingDesign } from '../types'
 import HexEtching from './HexEtching.vue'
 
@@ -24,20 +25,22 @@ function paint(index: number) {
 }
 function clearLayer() { layerOne.value = empty() }
 async function save() {
+  if (saving.value) return
   if (!name.value.trim()) { error.value = t('etching.nameRequired'); return }
+  if (!layerOne.value.some(Boolean)) { error.value = t('etching.paintRequired'); return }
   saving.value = true; error.value = ''
   try {
     const payload = { name: name.value.trim(), layerOne: layerOne.value }
     const saved = props.design ? await updateEtching(props.design.id, payload) : await createEtching(payload)
     emit('saved', saved)
-  } catch { error.value = t('etching.saveError') } finally { saving.value = false }
+  } catch (cause) { error.value = apiErrorMessage(cause, t('etching.saveError')) } finally { saving.value = false }
 }
 </script>
 
 <template>
-  <div class="etching-studio-mask" @click.self="emit('close')">
+  <div class="etching-studio-mask" @click.self="!saving && emit('close')">
     <section class="etching-studio" role="dialog" aria-modal="true" :aria-label="t('etching.studioTitle')">
-      <header><div><small>{{ t('etching.eyebrow') }}</small><h2>{{ design ? t('etching.editTitle') : t('etching.createTitle') }}</h2></div><button type="button" @click="emit('close')">×</button></header>
+      <header><div><small>{{ t('etching.eyebrow') }}</small><h2>{{ design ? t('etching.editTitle') : t('etching.createTitle') }}</h2></div><button type="button" :disabled="saving" @click="emit('close')">×</button></header>
       <div class="etching-studio-layout">
         <div class="etching-canvas-wrap">
           <HexEtching :layer-one="layerOne" editable @paint="paint" />
@@ -50,7 +53,7 @@ async function save() {
           <p>{{ t('etching.colorCount', { count: paintedCount }) }}</p><p v-if="error" class="form-error">{{ error }}</p>
         </div>
       </div>
-      <footer><button type="button" @click="emit('close')">{{ t('common.cancel') }}</button><button type="button" :disabled="saving" @click="save">{{ saving ? t('etching.saving') : t('etching.save') }}</button></footer>
+      <footer><button type="button" :disabled="saving" @click="emit('close')">{{ t('common.cancel') }}</button><button type="button" :disabled="saving" @click="save">{{ saving ? t('etching.saving') : t('etching.save') }}</button></footer>
     </section>
   </div>
 </template>

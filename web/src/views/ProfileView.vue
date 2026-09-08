@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 
 import { addWishlistItem, deleteEtching, deleteWishlistItem, getAchievements, getMyEtchings, getMyFavorites, getMyFoods, getMyFootprints, getMyWishlist, getRegions, removeFavorite, selectAchievement, selectEtching, updateAvatar, updateMyDisplayName, updateMySignature, uploadImage } from '../api'
 import { useAuth } from '../auth'
+import { apiErrorMessage } from '../apiError'
 import FoodEditModal from '../components/FoodEditModal.vue'
 import EtchingStudio from '../components/EtchingStudio.vue'
 import HexEtching from '../components/HexEtching.vue'
@@ -31,6 +32,8 @@ const editingEtching = ref<EtchingDesign>()
 const selectedFood = ref<Food>()
 const loading = ref(true)
 const error = ref('')
+const loadFailures = ref<string[]>([])
+const sealLoadFailed = computed(() => loadFailures.value.includes('achievements') || loadFailures.value.includes('etchings'))
 const avatarInput = ref<HTMLInputElement>()
 const avatarSaving = ref(false)
 const avatarError = ref('')
@@ -232,8 +235,15 @@ function handleEtchingSaved(saved: EtchingDesign) {
 }
 async function removeEtching(design: EtchingDesign) {
   if (!window.confirm(t('etching.deleteConfirm', { name: design.name }))) return
-  await deleteEtching(design.id)
-  etchings.value = etchings.value.filter((etching) => etching.id !== design.id)
+  if (achievementSaving.value !== undefined) return
+  achievementSaving.value = design.id
+  achievementError.value = ''
+  try {
+    await deleteEtching(design.id)
+    etchings.value = etchings.value.filter((etching) => etching.id !== design.id)
+  } catch (cause) {
+    achievementError.value = apiErrorMessage(cause, t('etching.deleteError'))
+  } finally { achievementSaving.value = undefined }
 }
 
 async function changeAvatar(event: Event) {
@@ -254,27 +264,48 @@ async function changeAvatar(event: Event) {
   }
 }
 
-onMounted(async () => {
+let profileRequestRunning = false
+async function loadProfile() {
+  if (profileRequestRunning) return
+  profileRequestRunning = true
+  loading.value = true
+  error.value = ''
+  loadFailures.value = []
+  // Each section commits independently; a missing optional endpoint must not hide
+  // successfully fetched etchings, foods, or favorites.
+  async function section(key: string, request: () => Promise<void>) {
+    try {
+      await request()
+    } catch {
+      loadFailures.value.push(key)
+      if (key === 'foods') error.value = t('profile.loadError')
+    }
+  }
   try {
-    ;[foods.value, footprints.value, regions.value, achievements.value, etchings.value, favorites.value, wishlist.value] = await Promise.all([
-      getMyFoods(),
-      getMyFootprints(),
-      getRegions(),
-      getAchievements(),
-      getMyEtchings(),
-      getMyFavorites(),
-      getMyWishlist(),
+    await Promise.all([
+      section('foods', async () => { foods.value = await getMyFoods() }),
+      section('footprints', async () => { footprints.value = await getMyFootprints() }),
+      section('regions', async () => { regions.value = await getRegions() }),
+      section('achievements', async () => { achievements.value = await getAchievements() }),
+      section('etchings', async () => { etchings.value = await getMyEtchings() }),
+      section('favorites', async () => { favorites.value = await getMyFavorites() }),
+      section('wishlist', async () => { wishlist.value = await getMyWishlist() }),
     ])
-  } catch {
-    error.value = t('profile.loadError')
   } finally {
     loading.value = false
+    profileRequestRunning = false
   }
-})
+}
+onMounted(loadProfile)
+
 </script>
 
 <template>
   <div class="profile-page">
+    <p v-if="loadFailures.length" class="form-error" role="status">
+      {{ t('profile.partialLoadError') }}
+      <button type="button" :disabled="loading" @click="loadProfile">{{ t('share.retry') }}</button>
+    </p>
     <section class="profile-hero">
       <div class="profile-identity">
         <div class="profile-avatar-control">
@@ -425,7 +456,7 @@ onMounted(async () => {
             </div>
           </article>
         </div>
-        <div v-else-if="!loading" class="collection-empty">
+        <div v-else-if="!loading && !loadFailures.includes('favorites')" class="collection-empty">
           <p>{{ t('profile.favoriteEmpty') }}</p>
           <RouterLink to="/">{{ t('profile.browseFoods') }}</RouterLink>
         </div>
@@ -475,7 +506,7 @@ onMounted(async () => {
             <p v-else class="wishlist-no-match">{{ t('profile.wishlistNoMatch') }}</p>
           </article>
         </div>
-        <div v-else-if="!loading" class="collection-empty"><p>{{ t('profile.wishlistEmpty') }}</p></div>
+        <div v-else-if="!loading && !loadFailures.includes('wishlist')" class="collection-empty"><p>{{ t('profile.wishlistEmpty') }}</p></div>
       </template>
     </section>
 
@@ -537,6 +568,8 @@ onMounted(async () => {
       <aside class="etching-panel">
         <small>{{ t('profile.sealEyebrow') }}</small>
         <h2>{{ t('profile.sealTitle') }}</h2>
+        <p v-if="loading" role="status">{{ t('profile.loading') }}</p>
+        <p v-else-if="sealLoadFailed" class="etching-error" role="status">{{ t('profile.sealLoadError') }}</p>
 
         <div v-if="selectedEtching" class="selected-etching">
           <div class="selected-etching-image"><HexEtching :layer-one="selectedEtching.layerOne" /></div>
@@ -550,7 +583,7 @@ onMounted(async () => {
           <strong>{{ selectedAchievement.name }}</strong>
           <p>{{ selectedAchievement.description }}</p>
         </div>
-        <template v-else>
+        <template v-else-if="!loading && !sealLoadFailed">
           <div class="etching-seal" aria-hidden="true">
             <div>
               <span>章</span>
@@ -629,7 +662,7 @@ onMounted(async () => {
           </div>
         </RouterLink>
       </div>
-      <p v-else-if="!loading" class="footprint-empty">{{ t('profile.noFootprints') }}</p>
+      <p v-else-if="!loading && !loadFailures.includes('footprints')" class="footprint-empty">{{ t('profile.noFootprints') }}</p>
     </section>
 
     <FoodEditModal
