@@ -105,6 +105,7 @@ function selectImage(event: Event) {
 }
 
 async function submit() {
+  if (saving.value) return
   error.value = ''
   saving.value = true
   try {
@@ -172,7 +173,7 @@ async function submit() {
         </label>
         <label>
           {{ t('upload.story') }}
-          <textarea v-model.trim="form.story" required rows="4"></textarea>
+          <textarea v-model.trim="form.story" required maxlength="10000" rows="4"></textarea>
         </label>
         <label>
           {{ t('upload.remark') }}
@@ -192,7 +193,7 @@ async function submit() {
               {{ image ? t('upload.changeCover') : t('upload.pickCover') }}
             </button>
           </div>
-          <img v-if="previewUrl" class="cover-preview" :src="previewUrl" :alt="t('profile.replaceCover')">
+          <img v-if="previewUrl || form.imageUrl" class="cover-preview" :src="previewUrl || form.imageUrl" :alt="t('profile.replaceCover')">
           <small v-if="imageMeta && !image" class="cover-warning">{{ t('upload.imageNeedsReselect') }}</small>
           <small>{{ food.imageUrl ? t('profile.keepCover') : t('upload.imageTip') }}</small>
         </div>

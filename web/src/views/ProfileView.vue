@@ -30,6 +30,7 @@ const etchings = ref<EtchingDesign[]>([])
 const studioOpen = ref(false)
 const editingEtching = ref<EtchingDesign>()
 const selectedFood = ref<Food>()
+const editSubmitted = ref(false)
 const loading = ref(true)
 const error = ref('')
 const loadFailures = ref<string[]>([])
@@ -133,6 +134,7 @@ async function removeWishlistItem(item: WishlistItem) {
 }
 
 function handleSaved(updated: Food) {
+  editSubmitted.value = true
   const index = foods.value.findIndex((food) => food.id === updated.id)
   if (index >= 0) foods.value.splice(index, 1, updated)
   selectedFood.value = undefined
@@ -520,6 +522,7 @@ onMounted(loadProfile)
           <p>{{ t('profile.recordsHint') }}</p>
         </div>
 
+        <p v-if="editSubmitted" class="profile-review-tip" role="status">{{ t('profile.editSubmitted') }}</p>
         <p v-if="loading" class="state">{{ t('profile.loading') }}</p>
         <p v-else-if="error" class="state">{{ error }}</p>
         <div v-else-if="foods.length" class="profile-food-list">
@@ -551,7 +554,7 @@ onMounted(loadProfile)
                   <RouterLink v-if="food.reviewStatus === 'APPROVED'" :to="`/foods/${food.id}`">
                     {{ t('profile.view') }}
                   </RouterLink>
-                  <button type="button" @click="selectedFood = food">{{ t('profile.complete') }}</button>
+                  <button type="button" @click="editSubmitted = false; selectedFood = food">{{ t('profile.complete') }}</button>
                 </div>
               </footer>
             </div>
