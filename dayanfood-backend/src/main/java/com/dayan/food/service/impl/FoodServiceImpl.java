@@ -230,16 +230,17 @@ public class FoodServiceImpl implements FoodService {
         if (owner == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录用户不存在");
         }
-        if (foodMapper.findOwnedById(id, username) == null) {
-            throw notFound("只能补全自己上传的菜品");
+        var existing = foodMapper.findOwnedById(id, username);
+        if (existing == null) {
+            throw notFound("只能编辑自己上传的菜品");
         }
         if (request.regionId() != null && regionMapper.findById(request.regionId()) == null) {
             throw notFound("地区不存在");
         }
 
-        boolean isAdmin = owner.getRole() == UserRole.ADMIN || owner.getRole() == UserRole.SUB_ADMIN;
-        FoodReviewStatus nextStatus = isAdmin ? FoodReviewStatus.APPROVED : FoodReviewStatus.PENDING;
-        String reviewedBy = isAdmin ? username : null;
+        // Personal edits require a fresh review, including administrator-owned dishes.
+        FoodReviewStatus nextStatus = FoodReviewStatus.PENDING;
+        String reviewedBy = null;
         int updated = foodMapper.updateOwnedDetails(
                 id,
                 username,
@@ -257,7 +258,12 @@ public class FoodServiceImpl implements FoodService {
                 reviewedBy
         );
         if (updated != 1) {
-            throw notFound("只能补全自己上传的菜品");
+            throw notFound("只能编辑自己上传的菜品");
+        }
+        Long previousRegionId = existing.getRegion() == null ? null : existing.getRegion().getId();
+        if (!java.util.Objects.equals(previousRegionId, request.regionId())) {
+            // Imported labels override region labels; discard them when the region changes.
+            foodMapper.updateLocationLabels(id, null, null);
         }
         clearFoodCaches(id);
         return FoodVO.from(foodMapper.findOwnedById(id, username));
