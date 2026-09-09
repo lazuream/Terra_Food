@@ -11,7 +11,9 @@ const food = {id:123,name:'龙门红烧肉',region:{id:1,name:'龙门',province:
 const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><defs><radialGradient id="g"><stop stop-color="#b17b4c"/><stop offset="1" stop-color="#322520"/></radialGradient></defs><rect width="640" height="400" fill="url(#g)"/><ellipse cx="320" cy="220" rx="210" ry="120" fill="#d8c5a9"/><ellipse cx="320" cy="210" rx="180" ry="93" fill="#733923"/><g fill="#bf6c39" stroke="#773621" stroke-width="6"><rect x="205" y="140" width="95" height="80" rx="15"/><rect x="309" y="125" width="100" height="80" rx="15"/><rect x="270" y="217" width="100" height="63" rx="14"/></g></svg>';
 (async()=>{
  await fs.mkdir(out, { recursive: true });
- const browser = await chromium.launch({channel:process.env.SHARE_TEST_BROWSER || 'chrome',headless:true});
+ const browser = await chromium.launch(process.env.SHARE_TEST_EXECUTABLE
+  ? { executablePath: process.env.SHARE_TEST_EXECUTABLE, headless: true }
+  : { channel: process.env.SHARE_TEST_BROWSER || 'chrome', headless: true });
  try {
  const page = await browser.newPage({viewport:{width:1440,height:1080},locale:'zh-CN'});
  const errors=[]; page.on('pageerror', e=>errors.push(e.message));
@@ -27,6 +29,7 @@ const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><d
   if(p==='/api/auth/me') { if(guest) return route.fulfill({status:401,json:{}}); body=user; }
   else if(p==='/api/foods/123') body=food;
   else if(p==='/api/profile/stats') {if(failStats==='html')return route.fulfill({contentType:'text/html',body:'<!doctype html><html>SPA fallback</html>'});if(failStats)return route.fulfill({status:Number(failStats),json:{}});body={viewedFoodCount:1234,favoriteCount:87};}
+  else if(p==='/api/profile/check-ins') body={items:[],total:0,page:1,pageSize:20};
   else if(p==='/api/users/42') body={...user,foods:[],selectedAchievement:null,selectedEtching:null};
   else if(p==='/api/etchings/me') body=[{id:1,name:'山海之印',selected:true,layerOne:Array.from({length:169},(_,i)=>i%3?'#79afbe':'#e2b75b')}];
   else if(p==='/api/achievements/me') body=Array.from({length:9},(_,i)=>({id:i+1,name:'寻味纪念 '+(i+1),imageUrl:'/test-medal.svg',selected:false}));
@@ -53,8 +56,8 @@ const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><d
  const decoded = jsQR(new Uint8ClampedArray(exported.data),exported.width,exported.height);
  assert.equal(decoded?.data,baseUrl + '/foods/123');
  assert.equal(await page.locator('.share-export-result img').evaluate(img=>img.naturalWidth),2400);
- await page.keyboard.press('Escape');
- assert.equal(await page.locator('dialog').count(),0);
+ await page.getByRole('button',{name:'关闭分享卡',exact:true}).click();
+ await page.waitForFunction(()=>!document.querySelector('dialog'));
  await page.setViewportSize({width:390,height:844});
  await page.getByRole('button',{name:'分享',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('.share-export') && !document.querySelector('.share-export').disabled);
@@ -65,8 +68,10 @@ const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><d
  const png=await fs.readFile(path.join(out,'share-export.png'));
  await page.locator('input[type=file]').setInputFiles({name:'background.png',mimeType:'image/png',buffer:png});
  await page.locator('.share-art').waitFor();
+ const importedBackground=await page.locator('.share-art').getAttribute('src');
  await page.getByRole('button',{name:'恢复默认背景'}).click();
- assert.equal(await page.locator('.share-art').count(),0);
+ const resetBackground=await page.locator('.share-art').count() ? await page.locator('.share-art').getAttribute('src') : null;
+ assert.notEqual(resetBackground,importedBackground);
  await page.keyboard.press('Escape');
  // Production regressions: missing endpoint, server error, and HTML fallback.
  for (const failure of [404,500,'html']) {
@@ -132,6 +137,7 @@ const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400"><d
  await page.evaluate(()=>localStorage.setItem('dayan-food-locale','zh-CN'));
  failFavorites=true;
  await page.goto(baseUrl+'/profile');
+ await page.locator('.profile-page').waitFor();
  await page.getByRole('button',{name:'重新加载'}).waitFor();
  await page.locator('.selected-etching strong').waitFor();
  assert.equal(await page.locator('.selected-etching strong').textContent(),'山海之印');

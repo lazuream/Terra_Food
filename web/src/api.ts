@@ -425,6 +425,7 @@ export async function createFoodCheckin(foodId: number, payload: { eatenOn: stri
 
 export async function getMyCheckins(page = 1, pageSize = 20): Promise<PagedCheckins> {
   const response = await api.get<PagedCheckins>('/profile/check-ins', { params: { page, pageSize } })
+  if (!response.data || !Array.isArray(response.data.items)) throw new Error('Invalid check-in response')
   return response.data
 }
 

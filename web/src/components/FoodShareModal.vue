@@ -263,9 +263,16 @@ async function exportCard() {
   }
 }
 watch(() => user.value?.id, () => emit('close'))
+function closeOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && dialog.value?.open) {
+    event.preventDefault()
+    dialog.value.close()
+  }
+}
 
 onMounted(() => {
   dialog.value?.showModal()
+  window.addEventListener('keydown', closeOnEscape)
   observer = new ResizeObserver(entries => {
     const width = entries[0]?.contentRect.width
     if (width) scale.value = width / 1200
@@ -276,6 +283,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   disposed = true
   controller.abort()
+  window.removeEventListener('keydown', closeOnEscape)
   observer?.disconnect()
   clearPreview()
 })
@@ -283,7 +291,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <dialog ref="dialog" class="food-share-dialog" aria-labelledby="share-title" @close="emit('close')" @click="event => { if (event.target === dialog) dialog?.close() }">
+    <dialog ref="dialog" class="food-share-dialog" aria-labelledby="share-title" @close="emit('close')" @cancel="dialog?.close()" @click="event => { if (event.target === dialog) dialog?.close() }">
       <header class="share-toolbar">
         <div><small>{{ t('share.eyebrow') }}</small><h2 id="share-title">{{ t('share.title') }}</h2></div>
         <button type="button" :aria-label="t('share.close')" autofocus @click="dialog?.close()">×</button>

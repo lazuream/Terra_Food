@@ -524,9 +524,9 @@ onMounted(loadProfile)
                 @click="removeWishlistItem(item)"
               >{{ t('profile.wishlistDelete') }}</button>
             </header>
-            <div v-if="item.matches.length" class="wishlist-matches">
+            <div v-if="item.matches?.length" class="wishlist-matches">
               <strong>{{ t('profile.wishlistMatchTitle') }}</strong>
-              <RouterLink v-for="match in item.matches" :key="match.food.id" :to="`/foods/${match.food.id}`">
+              <RouterLink v-for="match in item.matches || []" :key="match.food.id" :to="`/foods/${match.food.id}`">
                 <img v-if="match.food.imageUrl" :src="match.food.imageUrl" :alt="match.food.name">
                 <span v-else class="wishlist-match-fallback">{{ match.food.name.slice(0, 1) }}</span>
                 <span>
