@@ -63,6 +63,19 @@ export interface FoodCommentCreatePayload {
   content: string
 }
 
+export interface FoodCheckin {
+  id: number
+  foodId: number | null
+  foodName: string
+  eatenOn: string
+  note?: string
+  visibility: 'PUBLIC' | 'PRIVATE'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FoodTag { id: number; type: 'TASTE' | 'INGREDIENT' | 'CUISINE'; name: string; status: string; createdAt: string }
+
 export interface FoodFootprint {
   food: Food
   visitedAt: string

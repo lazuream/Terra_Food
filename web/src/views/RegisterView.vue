@@ -153,6 +153,7 @@ onUnmounted(() => window.clearInterval(cooldownTimer))
     </div>
 
     <div class="login-panel">
+      <nav class="auth-mode-tabs" aria-label="认证方式"><RouterLink to="/login">{{ t('register.backToLogin') }}</RouterLink><RouterLink class="active" to="/register">{{ t('register.submit') }}</RouterLink></nav>
       <div class="login-heading">
         <small>{{ t('register.welcome') }}</small>
         <h2>{{ t('register.title') }}</h2>

@@ -4,19 +4,20 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
-import { addWishlistItem, deleteEtching, deleteWishlistItem, getAchievements, getMyEtchings, getMyFavorites, getMyFoods, getMyFootprints, getMyWishlist, getRegions, removeFavorite, selectAchievement, selectEtching, updateAvatar, updateMyDisplayName, updateMySignature, uploadImage } from '../api'
+import { addWishlistItem, deleteEtching, deleteWishlistItem, getAchievements, getMyEtchings, getMyFavorites, getMyFoods, getMyFootprints, getMyCheckins, getMyWishlist, getRegions, removeFavorite, selectAchievement, selectEtching, updateAvatar, updateMyDisplayName, updateMySignature, uploadImage } from '../api'
 import { useAuth } from '../auth'
 import { apiErrorMessage } from '../apiError'
 import FoodEditModal from '../components/FoodEditModal.vue'
 import EtchingStudio from '../components/EtchingStudio.vue'
 import HexEtching from '../components/HexEtching.vue'
-import type { Achievement, EtchingDesign, Food, FoodFootprint, FoodReviewStatus, Region, SignatureStatus, WishlistItem, WishlistMatchField } from '../types'
+import type { Achievement, EtchingDesign, Food, FoodCheckin, FoodFootprint, FoodReviewStatus, Region, SignatureStatus, WishlistItem, WishlistMatchField } from '../types'
 
 const { locale, t } = useI18n()
 const route = useRoute()
 const auth = useAuth()
 const foods = ref<Food[]>([])
 const footprints = ref<FoodFootprint[]>([])
+const checkins = ref<FoodCheckin[]>([])
 const favorites = ref<Food[]>([])
 const wishlist = ref<WishlistItem[]>([])
 const collectionTab = ref<'favorites' | 'wishlist'>(route.query.tab === 'wishlist' ? 'wishlist' : 'favorites')
@@ -287,6 +288,7 @@ async function loadProfile() {
     await Promise.all([
       section('foods', async () => { foods.value = await getMyFoods() }),
       section('footprints', async () => { footprints.value = await getMyFootprints() }),
+      section('checkins', async () => { checkins.value = await getMyCheckins() }),
       section('regions', async () => { regions.value = await getRegions() }),
       section('achievements', async () => { achievements.value = await getAchievements() }),
       section('etchings', async () => { etchings.value = await getMyEtchings() }),
@@ -510,6 +512,17 @@ onMounted(loadProfile)
         </div>
         <div v-else-if="!loading && !loadFailures.includes('wishlist')" class="collection-empty"><p>{{ t('profile.wishlistEmpty') }}</p></div>
       </template>
+    </section>
+
+    <section class="collection-panel checkin-panel">
+      <div class="collection-heading"><div><small>味觉日记</small><h2>我的打卡</h2></div><p>记录真正吃过的珍馐，公开或仅自己可见。</p></div>
+      <div v-if="checkins.length" class="checkin-list">
+        <article v-for="item in checkins" :key="item.id" class="wishlist-card">
+          <header><div><h3>{{ item.foodName }}</h3><time>{{ item.eatenOn }}</time></div><span>{{ item.visibility === 'PRIVATE' ? '仅自己可见' : '公开' }}</span></header>
+          <p v-if="item.note">{{ item.note }}</p>
+        </article>
+      </div>
+      <p v-else-if="!loading && !loadFailures.includes('checkins')" class="collection-empty">还没有打卡，去菜品详情记录第一次体验吧。</p>
     </section>
 
     <section class="profile-layout">

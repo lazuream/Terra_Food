@@ -35,7 +35,9 @@ public class RegionServiceImpl implements RegionService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    // Location resolution may insert a missing city, so this transaction must
+    // remain read-write.
+    @Transactional
     public RegionVO resolveLocation(String province, String city) {
         String normalizedProvince = cityCenterService.normalizeProvince(province);
         String normalizedCity = normalizeCity(city);

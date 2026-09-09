@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import type { AgentChatPayload, AgentChatResponse, FoodFootprint } from './types'
+import type { AgentChatPayload, AgentChatResponse, FoodFootprint, FoodCheckin, FoodTag } from './types'
 
 import type {
   Achievement,
@@ -370,8 +370,10 @@ function normalizeCity(value: string): string {
     .trim()
 }
 
-export async function createFood(payload: FoodCreatePayload): Promise<Food> {
-  const response = await api.post<Food>('/foods', payload)
+export async function createFood(payload: FoodCreatePayload, idempotencyKey?: string): Promise<Food> {
+  const response = await api.post<Food>('/foods', payload, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+  })
   return response.data
 }
 
@@ -392,6 +394,30 @@ export async function getMyFootprints(limit = 20): Promise<FoodFootprint[]> {
   return response.data
 }
 
+export async function createFoodCheckin(foodId: number, payload: { eatenOn: string; note?: string; visibility: 'PUBLIC' | 'PRIVATE' }): Promise<FoodCheckin> {
+  const response = await api.post<FoodCheckin>(`/foods/${foodId}/check-ins`, payload)
+  return response.data
+}
+
+export async function getMyCheckins(limit = 20): Promise<FoodCheckin[]> {
+  const response = await api.get<FoodCheckin[]>('/profile/check-ins', { params: { limit } })
+  return response.data
+}
+
+export async function deleteMyCheckin(id: number): Promise<void> {
+  await api.delete(`/profile/check-ins/${id}`)
+}
+
+export async function getFoodTags(type?: FoodTag['type'], keyword?: string): Promise<FoodTag[]> {
+  const response = await api.get<FoodTag[]>('/food-tags', { params: { type, keyword } })
+  return response.data
+}
+
+export async function createFoodTag(payload: { type: FoodTag['type']; name: string }): Promise<FoodTag> {
+  const response = await api.post<FoodTag>('/food-tags', payload)
+  return response.data
+}
+
 export async function chatWithAgent(payload: AgentChatPayload): Promise<AgentChatResponse> {
   const response = await api.post<AgentChatResponse>('/agent/chat', payload, { timeout: 60_000 })
   return response.data
@@ -406,7 +432,7 @@ export async function uploadImage(file: File): Promise<string> {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await api.post<{ url: string }>('/images', formData)
+  const response = await api.post<{ url: string }>('/images', formData, { timeout: 60_000 })
   return response.data.url
 }
 

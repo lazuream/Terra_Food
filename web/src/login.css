@@ -589,6 +589,10 @@
   border-left: 2px solid #bd765f;
 }
 
+.auth-mode-tabs { display:flex; gap:8px; margin-bottom:18px; }
+.auth-mode-tabs a { padding:6px 14px; border-bottom:2px solid transparent; color:var(--color-accent-label); }
+.auth-mode-tabs a.active { border-bottom-color:var(--color-accent); color:var(--color-ink); }
+
 .login-panel {
   display: flex;
   flex-direction: column;

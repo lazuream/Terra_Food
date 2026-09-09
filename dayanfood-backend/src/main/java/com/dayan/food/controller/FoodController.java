@@ -7,6 +7,8 @@ import com.dayan.food.entity.vo.FoodImportResultVO;
 import com.dayan.food.entity.vo.FoodMarkerVO;
 import com.dayan.food.service.FoodImportService;
 import com.dayan.food.service.FoodService;
+import com.dayan.food.mapper.AppUserMapper;
+import com.dayan.food.mapper.FoodIdempotencyMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -30,10 +32,14 @@ public class FoodController {
 
     private final FoodService foodService;
     private final FoodImportService foodImportService;
+    private final AppUserMapper appUserMapper;
+    private final FoodIdempotencyMapper idempotencyMapper;
 
-    public FoodController(FoodService foodService, FoodImportService foodImportService) {
+    public FoodController(FoodService foodService, FoodImportService foodImportService, AppUserMapper appUserMapper, FoodIdempotencyMapper idempotencyMapper) {
         this.foodService = foodService;
         this.foodImportService = foodImportService;
+        this.appUserMapper = appUserMapper;
+        this.idempotencyMapper = idempotencyMapper;
     }
 
     @GetMapping
@@ -95,8 +101,27 @@ public class FoodController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public FoodVO create(@Valid @RequestBody FoodCreateDTO request, Authentication authentication) {
-        return foodService.create(request, authentication == null ? "无名" : authentication.getName());
+    public FoodVO create(@Valid @RequestBody FoodCreateDTO request, Authentication authentication, @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        String username = authentication == null ? "无名" : authentication.getName();
+        if (idempotencyKey != null && !idempotencyKey.isBlank() && authentication != null) {
+            var user = appUserMapper.findByUsername(username);
+            if (user != null) {
+                String key = idempotencyKey.trim();
+                if (key.length() > 100) throw new IllegalArgumentException("幂等键过长");
+                Long existingId = idempotencyMapper.findFoodId(user.getId(), key);
+                if (existingId != null) {
+                    return foodService.listMine(username).stream().filter(food -> existingId.equals(food.id())).findFirst().orElseThrow(() -> new IllegalArgumentException("幂等记录对应的菜品不可访问"));
+                }
+                FoodVO created = foodService.create(request, username);
+                try { idempotencyMapper.insert(user.getId(), key, created.id()); }
+                catch (org.springframework.dao.DuplicateKeyException ignored) {
+                    Long duplicateId = idempotencyMapper.findFoodId(user.getId(), key);
+                    return foodService.listMine(username).stream().filter(food -> duplicateId != null && duplicateId.equals(food.id())).findFirst().orElseThrow(() -> new IllegalArgumentException("幂等记录对应的菜品不可访问"));
+                }
+                return created;
+            }
+        }
+        return foodService.create(request, username);
     }
 
     @PostMapping("/import")

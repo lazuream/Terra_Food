@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { getFoodCatalog, getFoodMarkers, getRegions, reverseMapLocation } from '../api'
+import { getFoodCatalog, getFoodMarkers, getMyFavorites, getRegions, reverseMapLocation } from '../api'
 import { useAuth } from '../auth'
 import FoodMap from '../components/FoodMap.vue'
 import FoodUploadModal from '../components/FoodUploadModal.vue'
@@ -13,6 +13,7 @@ import type { Food, FoodMarker, MapBounds, MapCoordinate, MapFocus, Region } fro
 const foods = ref<Food[]>([])
 const markerFoods = ref<FoodMarker[]>([])
 const regions = ref<Region[]>([])
+const favorites = ref<Food[]>([])
 const catalogTotal = ref(0)
 const catalogPage = ref(1)
 const catalogPageSize = 30
@@ -44,6 +45,10 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
+
+async function loadFavorites() {
+  try { favorites.value = auth.currentUser.value ? await getMyFavorites() : [] } catch { favorites.value = [] }
+}
 
 const regionToggleLabel = computed(() => {
   const selectedRegion = regions.value.find((region) => region.id === selectedRegionId.value)
@@ -373,6 +378,8 @@ watch(
   },
 )
 
+watch(() => auth.currentUser.value?.id, () => { void loadFavorites() })
+
 async function openUpload() {
   if (!auth.currentUser.value) {
     await router.push({ path: '/login', query: { redirect: '/' } })
@@ -392,6 +399,7 @@ async function openUpload() {
 }
 
 onMounted(async () => {
+  void loadFavorites()
   // 首次进入首页即请求浏览器位置权限；失败时保留完整的手动选点流程。
   locateUser()
   try {
@@ -470,6 +478,16 @@ onMounted(async () => {
           <b>{{ t('home.addFood') }}</b>
         </button>
       </div>
+
+      <section class="sidebar-favorites" aria-labelledby="sidebar-favorites-title">
+        <p class="eyebrow" id="sidebar-favorites-title">已收藏的珍馐</p>
+        <p v-if="!auth.currentUser.value" class="explorer-notice">登录后查看你的收藏。</p>
+        <p v-else-if="favorites.length === 0" class="explorer-notice">还没有收藏，先从目录挑一道吧。</p>
+        <RouterLink v-for="food in favorites.slice(0, 5)" :key="food.id" :to="`/foods/${food.id}`" class="sidebar-favorite-item">
+          <span>{{ food.name }}</span><small>{{ food.region.name }}</small>
+        </RouterLink>
+        <RouterLink v-if="auth.currentUser.value" to="/profile" class="sidebar-favorites-more">查看全部收藏 →</RouterLink>
+      </section>
 
       <p v-if="pickHint" class="explorer-notice">{{ pickHint }}</p>
       <div class="explorer-sidebar-foot">

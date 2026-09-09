@@ -26,6 +26,30 @@
   -webkit-text-size-adjust: 100%;
 }
 
+:root[data-theme='dark'] {
+  --color-ink: #f2e8d8;
+  --color-bg: #1b1714;
+  --color-paper: #29221d;
+  --color-input: #211b18;
+  --color-accent: #d87562;
+  --color-accent-label: #e59a82;
+  --border-paper: #594a3e;
+  --border-map: #594a3e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-ink: #f2e8d8;
+    --color-bg: #1b1714;
+    --color-paper: #29221d;
+    --color-input: #211b18;
+    --color-accent: #d87562;
+    --color-accent-label: #e59a82;
+    --border-paper: #594a3e;
+    --border-map: #594a3e;
+  }
+}
+
 /* ===== 重置与正文 ===== */
 
 * {

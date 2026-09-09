@@ -14,6 +14,15 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
 const mobileNavOpen = ref(false)
+type ThemeMode = 'system' | 'light' | 'dark'
+const storedTheme = localStorage.getItem('terra-food.theme') as ThemeMode | null
+const themeMode = ref<ThemeMode>(storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'system')
+function applyTheme(mode: ThemeMode) {
+  themeMode.value = mode
+  if (mode === 'system') document.documentElement.removeAttribute('data-theme')
+  else document.documentElement.dataset.theme = mode
+  localStorage.setItem('terra-food.theme', mode)
+}
 const nextLocaleLabel = computed(() => locale.value === 'zh-CN' ? 'EN' : '中')
 // 不参与常规导航展示的页面：登录/注册/关于。
 const isAuthFlowPage = computed(() => ['/login', '/register', '/about'].includes(route.path))
@@ -53,6 +62,7 @@ function closeMenuOnKeydown(event: KeyboardEvent) {
 }
 
 onMounted(() => {
+  applyTheme(themeMode.value)
   document.addEventListener('pointerdown', closeMenuOnOutside)
   document.addEventListener('keydown', closeMenuOnKeydown)
 })
@@ -119,6 +129,14 @@ async function logout() {
       <button class="language-switch" :aria-label="nextLocaleLabel" @click="toggleLocale">
         {{ nextLocaleLabel }}
       </button>
+      <label class="theme-toggle">
+        <span class="sr-only">{{ t('theme.label') }}</span>
+        <select :value="themeMode" :aria-label="t('theme.label')" @change="applyTheme(($event.target as HTMLSelectElement).value as ThemeMode)">
+          <option value="system">{{ t('theme.system') }}</option>
+          <option value="light">{{ t('theme.light') }}</option>
+          <option value="dark">{{ t('theme.dark') }}</option>
+        </select>
+      </label>
     </nav>
   </header>
 

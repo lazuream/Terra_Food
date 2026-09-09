@@ -3,6 +3,7 @@ import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { createFood, uploadImage } from '../api'
+import { apiErrorMessage } from '../apiError'
 import {
   cacheDraftImage,
   clearDraft,
@@ -56,6 +57,8 @@ const previewUrl = ref('')
 const coverInput = ref<HTMLInputElement>()
 const saving = ref(false)
 const error = ref('')
+const stage = ref<'idle' | 'uploading' | 'saving'>('idle')
+const idempotencyKey = crypto.randomUUID()
 const { t } = useI18n()
 
 watch(
@@ -163,24 +166,29 @@ async function submit() {
   try {
     // 图片与菜品信息分两步提交：先取得资源 URL，再保存稳定的业务记录。
     if (image.value) {
+      stage.value = 'uploading'
       form.imageUrl = await uploadImage(image.value)
     }
 
+    stage.value = 'saving'
     const food = await createFood({
       ...form,
       latitude: form.latitude as number,
       longitude: form.longitude as number,
-    })
+    }, idempotencyKey)
     if (food.reviewStatus === 'PENDING') {
       window.alert(t('upload.pendingSuccess'))
     }
     clearDraft(DRAFT_KEY)
     forgetDraftImage(DRAFT_KEY)
     emit('saved', food)
-  } catch {
-    error.value = t('upload.saveError')
+  } catch (requestError) {
+    error.value = apiErrorMessage(requestError, stage.value === 'uploading'
+      ? t('upload.imageUploadError')
+      : t('upload.saveError'))
   } finally {
     saving.value = false
+    stage.value = 'idle'
   }
 }
 </script>
@@ -197,6 +205,9 @@ async function submit() {
       </div>
 
       <form @submit.prevent="submit">
+        <p v-if="stage !== 'idle'" class="form-status" role="status">
+          {{ stage === 'uploading' ? '正在上传图片…' : '正在保存菜品…' }}
+        </p>
         <div class="form-grid">
           <label>
             {{ t('upload.name') }}

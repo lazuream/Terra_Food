@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dayan.food.mapper.FoodTagMapper">
+ <resultMap id="tag" type="com.dayan.food.entity.vo.FoodTagVO"><id property="id" column="id"/><result property="type" column="type"/><result property="name" column="name"/><result property="status" column="status"/><result property="createdAt" column="created_at"/></resultMap>
+ <select id="findApproved" resultMap="tag">SELECT id,type,name,status,created_at FROM food_tag WHERE status='APPROVED' <if test="type != null and type != ''">AND type=#{type}</if> <if test="keyword != null and keyword != ''">AND name LIKE CONCAT('%',#{keyword},'%')</if> ORDER BY name LIMIT 100</select>
+ <insert id="insert">INSERT INTO food_tag(type,name,normalized_name,created_by) VALUES(#{type},#{name},#{normalized},#{userId})</insert>
+ <select id="findById" resultMap="tag">SELECT id,type,name,status,created_at FROM food_tag WHERE id=#{id}</select>
+ <select id="findByName" resultMap="tag">SELECT id,type,name,status,created_at FROM food_tag WHERE type=#{type} AND normalized_name=#{normalized}</select>
+</mapper>

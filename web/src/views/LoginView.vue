@@ -26,8 +26,9 @@ const registrationSucceeded = route.query.registered === '1'
 const resetSucceeded = ref(false)
 const accessOpen = ref(registrationSucceeded || route.query.role === 'ADMIN')
 const rememberedUser = computed(() => auth.currentUser.value)
-const MIN_LOADING_DURATION_MS = 5_000
-const READY_HOLD_DURATION_MS = 700
+// 登录成功后不再强制等待固定的终端动画时长；数据准备完成即可进入。
+const MIN_LOADING_DURATION_MS = 0
+const READY_HOLD_DURATION_MS = 200
 let preloadStartedAt = 0
 let progressTimer: ReturnType<typeof setInterval> | undefined
 let sceneWaitTimer: ReturnType<typeof setTimeout> | undefined
@@ -232,6 +233,7 @@ async function submit() {
             @click="closeAccess"
           >×</button>
 
+          <nav class="auth-mode-tabs" aria-label="认证方式"><RouterLink class="active" to="/login">{{ t('login.submit') }}</RouterLink><RouterLink to="/register">{{ t('login.registerNow') }}</RouterLink></nav>
           <div class="login-heading">
             <span class="login-access-seal">炎</span>
             <small>{{ t('login.welcome') }}</small>

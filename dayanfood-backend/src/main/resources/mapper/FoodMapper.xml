@@ -74,7 +74,13 @@
     <sql id="listConditions">
         f.review_status = 'APPROVED'
         <if test="keyword != null and keyword != ''">
-            AND LOWER(f.name) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+            AND (
+                LOWER(f.name) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                OR LOWER(COALESCE(f.ingredients, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                OR LOWER(COALESCE(f.address, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                OR LOWER(COALESCE(f.city, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                OR LOWER(COALESCE(f.province, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+            )
         </if>
         <if test="regionId != null">
             AND f.region_id = #{regionId}

@@ -1,4 +1,5 @@
 export default {
+  theme: { label: 'Theme', system: 'System', light: 'Light', dark: 'Dark' },
   share: {
     statsHttpError: 'Profile statistics request failed (HTTP {status}); actual counts are unavailable.',
     statsNetworkError: 'The statistics request timed out or the network is unavailable.',
@@ -208,6 +209,8 @@ export default {
     commentSubmitting: 'Posting…',
     commentRequired: 'Please enter a comment.',
     commentSubmitError: 'Unable to post the comment. Please try again.',
+    commentMode: 'Comment', checkinMode: 'Check in', checkinAs: 'Record a check-in as {name}',
+    checkinDate: 'Eaten on', checkinVisibility: 'Visibility', checkinPublic: 'Public', checkinPrivate: 'Private', checkinSubmit: 'Save check-in',
     commentsLoading: 'Loading comments…',
     commentLoadError: 'Unable to load comments. Please try again.',
     commentsEmpty: 'No comments yet. Be the first to share an impression.',
@@ -244,6 +247,7 @@ export default {
     coordinateRequired: 'Pick a location on the map first.',
     pendingSuccess: 'Your dish was submitted and will appear on the map after administrator approval.',
     saveError: 'Unable to save. Please check the form and backend service.',
+    imageUploadError: 'Image upload failed. Check the format and size, then try again.',
     saving: 'Saving…',
     submit: 'Add to the Collection',
   },

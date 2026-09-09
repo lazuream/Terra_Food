@@ -9,6 +9,7 @@ import {
   addFavorite,
   addWishlistItem,
   createFoodComment,
+  createFoodCheckin,
   getFood,
   getFoodComments,
   getFavoriteStatus,
@@ -32,6 +33,9 @@ const currentUser = auth.currentUser
 const food = ref<Food>()
 const comments = ref<FoodComment[]>([])
 const commentContent = ref('')
+const checkinMode = ref(false)
+const checkinDate = ref(new Date().toISOString().slice(0, 10))
+const checkinVisibility = ref<'PUBLIC' | 'PRIVATE'>('PUBLIC')
 const error = ref('')
 const commentError = ref('')
 const commentsLoading = ref(false)
@@ -103,6 +107,20 @@ async function submitComment() {
   } finally {
     if (!signal?.aborted) submittingComment.value = false
   }
+}
+
+async function submitCheckin() {
+  if (!currentUser.value || submittingComment.value) return
+  submittingComment.value = true
+  commentError.value = ''
+  try {
+    await createFoodCheckin(Number(route.params.id), { eatenOn: checkinDate.value, note: commentContent.value.trim() || undefined, visibility: checkinVisibility.value })
+    commentContent.value = ''
+    checkinMode.value = false
+    await loadComments(Number(route.params.id))
+  } catch (requestError) {
+    commentError.value = apiErrorMessage(requestError, '打卡保存失败，请稍后重试。')
+  } finally { submittingComment.value = false }
 }
 
 function handleAgentCommentPublished(event: Event) {
@@ -348,7 +366,7 @@ onBeforeUnmount(() => {
         <span>{{ t('detail.commentCount', { count: comments.length }) }}</span>
       </div>
 
-      <form v-if="currentUser" class="comment-form" @submit.prevent="submitComment">
+    <form v-if="currentUser" class="comment-form" @submit.prevent="checkinMode ? submitCheckin() : submitComment()">
         <div class="user-avatar comment-form-avatar">
           <img
             v-if="currentUser.avatarUrl"
@@ -358,7 +376,15 @@ onBeforeUnmount(() => {
           <span v-else>{{ avatarInitial(currentUser.displayName) }}</span>
         </div>
         <div>
-          <label for="food-comment">{{ t('detail.commentAs', { name: currentUser.displayName }) }}</label>
+          <div class="comment-mode-switch">
+            <button type="button" :class="{ active: !checkinMode }" @click="checkinMode = false">{{ t('detail.commentMode') }}</button>
+            <button type="button" :class="{ active: checkinMode }" @click="checkinMode = true">{{ t('detail.checkinMode') }}</button>
+          </div>
+          <label for="food-comment">{{ checkinMode ? t('detail.checkinAs', { name: currentUser.displayName }) : t('detail.commentAs', { name: currentUser.displayName }) }}</label>
+          <div v-if="checkinMode" class="checkin-options">
+            <label>{{ t('detail.checkinDate') }} <input v-model="checkinDate" type="date" :max="new Date().toISOString().slice(0, 10)" required></label>
+            <label>{{ t('detail.checkinVisibility') }} <select v-model="checkinVisibility"><option value="PUBLIC">{{ t('detail.checkinPublic') }}</option><option value="PRIVATE">{{ t('detail.checkinPrivate') }}</option></select></label>
+          </div>
           <textarea
             id="food-comment"
             v-model="commentContent"
@@ -369,7 +395,7 @@ onBeforeUnmount(() => {
           <div class="comment-form-actions">
             <small>{{ commentContent.length }}/500</small>
             <button :disabled="submittingComment">
-              {{ submittingComment ? t('detail.commentSubmitting') : t('detail.commentSubmit') }}
+              {{ submittingComment ? t('detail.commentSubmitting') : (checkinMode ? t('detail.checkinSubmit') : t('detail.commentSubmit')) }}
             </button>
           </div>
         </div>

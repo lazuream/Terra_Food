@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dayan.food.mapper.FoodCheckinMapper">
+  <resultMap id="checkin" type="com.dayan.food.entity.vo.FoodCheckinVO">
+    <id property="id" column="id"/><result property="foodId" column="food_id"/>
+    <result property="foodName" column="food_name_snapshot"/><result property="eatenOn" column="eaten_on"/>
+    <result property="note" column="note"/><result property="visibility" column="visibility"/>
+    <result property="createdAt" column="created_at"/><result property="updatedAt" column="updated_at"/>
+  </resultMap>
+  <sql id="columns">id, food_id, food_name_snapshot, eaten_on, note, visibility, created_at, updated_at</sql>
+  <insert id="insert">
+    INSERT INTO food_checkin(food_id,user_id,food_name_snapshot,eaten_on,note,visibility)
+    VALUES(#{foodId},#{userId},#{foodName},#{eatenOn},#{note},#{visibility})
+  </insert>
+  <select id="findByUser" resultMap="checkin">SELECT <include refid="columns"/> FROM food_checkin WHERE user_id=#{userId} ORDER BY eaten_on DESC,id DESC LIMIT #{limit}</select>
+  <select id="findOwned" resultMap="checkin">SELECT <include refid="columns"/> FROM food_checkin WHERE id=#{id} AND user_id=#{userId}</select>
+  <delete id="deleteOwned">DELETE FROM food_checkin WHERE id=#{id} AND user_id=#{userId}</delete>
+</mapper>

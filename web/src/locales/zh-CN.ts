@@ -1,4 +1,5 @@
 export default {
+  theme: { label: '主题', system: '跟随系统', light: '浅色', dark: '深色' },
   share: {
     statsHttpError: '个人统计接口请求失败（HTTP {status}），尚未取得真实数量。',
     statsNetworkError: '个人统计请求超时或网络不可用，尚未取得真实数量。',
@@ -208,6 +209,8 @@ export default {
     commentSubmitting: '正在发表……',
     commentRequired: '请输入评论内容。',
     commentSubmitError: '评论发表失败，请稍后重试。',
+    commentMode: '评论', checkinMode: '打卡', checkinAs: '以 {name} 的身份记录打卡',
+    checkinDate: '吃过日期', checkinVisibility: '可见性', checkinPublic: '公开', checkinPrivate: '仅自己可见', checkinSubmit: '保存打卡',
     commentsLoading: '正在读取食客留言……',
     commentLoadError: '评论加载失败，请稍后重试。',
     commentsEmpty: '尚无评论，来写下第一条味觉印象吧。',
@@ -244,6 +247,7 @@ export default {
     coordinateRequired: '请先在地图上点击选择坐标。',
     pendingSuccess: '菜品已提交，管理员审批通过后会显示在地图上。',
     saveError: '保存失败，请检查填写内容和后端服务。',
+    imageUploadError: '图片上传失败，请检查格式和大小后重试。',
     saving: '正在收录……',
     submit: '收入珍馐志',
   },

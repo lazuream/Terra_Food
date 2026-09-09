@@ -440,7 +440,7 @@ public class FoodServiceImpl implements FoodService {
         if (keyword == null || keyword.isBlank()) {
             return null;
         }
-        String normalized = keyword.trim();
+        String normalized = keyword.trim().replaceAll("\\s+", " ");
         if (normalized.length() > 100) {
             throw new IllegalArgumentException("搜索关键词不能超过 100 个字符");
         }
