@@ -2,28 +2,35 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import L from 'leaflet'
-import markerIcon2xUrl from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIconUrl from 'leaflet/dist/images/marker-icon.png'
-import markerShadowUrl from 'leaflet/dist/images/marker-shadow.png'
 
-import type { Food, MapBounds } from '../types'
+import type { FoodMarker, MapBounds, MapCoordinate, MapFocus } from '../types'
 import 'leaflet/dist/leaflet.css'
 
-// Vite 会内联 Leaflet CSS 中用于探测路径的图片，导致默认图标退回到不存在的
-// /marker-icon.png。显式注入构建后的资源 URL，确保开发和生产环境使用同一图标。
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2xUrl,
-  iconUrl: markerIconUrl,
-  shadowUrl: markerShadowUrl,
+// 使用项目自身的朱砂标记，避免 Leaflet 默认图片路径在开发/生产环境中退化成破图。
+const foodMarkerIcon = L.divIcon({
+  className: 'food-map-marker',
+  html: '<span aria-hidden="true">炎</span>',
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+  popupAnchor: [0, -18],
+})
+
+const pickedLocationIcon = L.divIcon({
+  className: 'food-map-picked-marker',
+  html: '<span aria-hidden="true"></span>',
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
 })
 
 const props = defineProps<{
-  foods: Food[]
+  foods: FoodMarker[]
+  focus?: MapFocus
+  pickedLocation?: MapCoordinate
 }>()
 
 const emit = defineEmits<{
   pick: [latitude: number, longitude: number]
-  boundsChange: [bounds: MapBounds]
+  boundsChange: [bounds: MapBounds, zoom: number]
 }>()
 
 const { locale, t } = useI18n()
@@ -33,20 +40,78 @@ const mapReady = ref(false)
 const mapLoadError = ref(false)
 let map: L.Map | undefined
 let markerLayer: L.LayerGroup | undefined
+let pickedLocationMarker: L.Marker | undefined
 let tileLayer: L.TileLayer | undefined
 let annotationLayer: L.TileLayer | undefined
 let resizeObserver: ResizeObserver | undefined
 let resizeFrame: number | undefined
 let mountFrame: number | undefined
 let primaryLoadTimer: ReturnType<typeof setTimeout> | undefined
-let tileErrorCount = 0
+let tileLoadGeneration = 0
 let activeTileProvider: 'tianditu' | 'osm' = 'tianditu'
 
 const tiandituKey = import.meta.env.VITE_TIANDITU_KEY?.trim()
 const tiandituSubdomains = ['0', '1', '2', '3', '4', '5', '6', '7']
+// 数据仍严格限定中国境内；视野额外保留一圈东亚缓冲，方便把被底部目录遮住的华南区域向上拖出。
+const chinaDataBounds = L.latLngBounds([18, 73], [54, 135.2])
+const chinaTileBounds = L.latLngBounds([-10, 0], [70, 180])
+// 以中国完整露出侧栏为上限，保留少量横向拖动余量，不再允许拖入无瓦片的灰色区域。
+const chinaViewportBounds = L.latLngBounds([-5, 15], [65, 175])
+const chinaCenter: L.LatLngExpression = [35.5, 99.5]
 
 function tiandituTileUrl(layer: 'vec_w' | 'cva_w') {
   return `https://t{s}.tianditu.gov.cn/DataServer?T=${layer}&x={x}&y={y}&l={z}&tk=${encodeURIComponent(tiandituKey || '')}`
+}
+
+function createFoodPopup(food: FoodMarker) {
+  const popup = document.createElement('div')
+  popup.className = 'map-popup'
+
+  const name = document.createElement('strong')
+  name.textContent = food.name
+
+  const region = document.createElement('span')
+  region.textContent = food.region.province + ' · ' + food.region.name
+
+  const summary = document.createElement('p')
+  summary.textContent = food.summary
+
+  const detailLink = document.createElement('a')
+  detailLink.href = '/foods/' + food.id
+  detailLink.textContent = t('map.detail')
+
+  popup.append(name, region, summary, detailLink)
+  return popup
+}
+
+function createClusterIcon(count: number) {
+  return L.divIcon({
+    className: 'food-map-cluster',
+    html: '<span aria-hidden="true">' + count + '</span>',
+    iconSize: [38, 38],
+    iconAnchor: [19, 19],
+  })
+}
+
+function createClusterPopup(foods: FoodMarker[]) {
+  const popup = document.createElement('div')
+  popup.className = 'map-popup map-cluster-popup'
+
+  const title = document.createElement('strong')
+  title.textContent = t('home.recordCount', { count: foods.length })
+  const list = document.createElement('ul')
+
+  foods.forEach((food) => {
+    const item = document.createElement('li')
+    const detailLink = document.createElement('a')
+    detailLink.href = '/foods/' + food.id
+    detailLink.textContent = food.name
+    item.append(detailLink)
+    list.append(item)
+  })
+
+  popup.append(title, list)
+  return popup
 }
 
 function renderMarkers() {
@@ -55,48 +120,95 @@ function renderMarkers() {
   }
 
   const layer = markerLayer
-  // 筛选或切换语言后重建图层，避免残留旧标记和旧语言弹窗。
   layer.clearLayers()
-  props.foods.forEach((food) => {
-    if (food.latitude == null || food.longitude == null) {
+  const zoom = map.getZoom()
+  const cellSize = zoom <= 5 ? 58 : zoom <= 7 ? 48 : zoom <= 10 ? 40 : 30
+  const groups = new Map<string, { foods: FoodMarker[], latitude: number, longitude: number }>()
+
+  for (const food of props.foods) {
+    if (food.latitude == null || food.longitude == null) continue
+
+    const projected = map.project([food.latitude, food.longitude], zoom)
+    const key = Math.floor(projected.x / cellSize) + ':' + Math.floor(projected.y / cellSize)
+    const group = groups.get(key)
+    if (group) {
+      group.foods.push(food)
+      group.latitude += food.latitude
+      group.longitude += food.longitude
+    } else {
+      groups.set(key, {
+        foods: [food],
+        latitude: food.latitude,
+        longitude: food.longitude,
+      })
+    }
+  }
+
+  groups.forEach((group) => {
+    const count = group.foods.length
+    const position: L.LatLngExpression = [
+      group.latitude / count,
+      group.longitude / count,
+    ]
+    if (count === 1) {
+      L.marker(position, { icon: foodMarkerIcon })
+        .bindPopup(createFoodPopup(group.foods[0]))
+        .addTo(layer)
       return
     }
 
-    const position: L.LatLngExpression = [food.latitude, food.longitude]
-    const popup = document.createElement('div')
-    popup.className = 'map-popup'
+    const memberPositions = group.foods.map(
+      (food) => L.latLng(food.latitude, food.longitude),
+    )
+    const memberBounds = L.latLngBounds(memberPositions)
+    const samePosition = memberBounds.getNorthEast().equals(memberBounds.getSouthWest())
+    const clusterMarker = L.marker(position, { icon: createClusterIcon(count) })
 
-    const name = document.createElement('strong')
-    name.textContent = food.name
-
-    const region = document.createElement('span')
-    region.textContent = `${food.region.province} · ${food.region.name}`
-
-    const summary = document.createElement('p')
-    summary.textContent = food.summary
-
-    const detailLink = document.createElement('a')
-    detailLink.href = `/foods/${food.id}`
-    detailLink.textContent = t('map.detail')
-
-    popup.append(name, region, summary, detailLink)
-
-    L.marker(position)
-      .bindPopup(popup)
-      .addTo(layer)
+    if (samePosition || zoom >= 14) {
+      clusterMarker.bindPopup(createClusterPopup(group.foods))
+    } else {
+      clusterMarker.on('click', () => {
+        map?.fitBounds(memberBounds.pad(0.3), {
+          animate: true,
+          duration: 0.65,
+          maxZoom: Math.min(zoom + 3, 14),
+        })
+      })
+    }
+    clusterMarker.addTo(layer)
   })
+}
 
+function renderPickedLocation() {
+  pickedLocationMarker?.remove()
+  pickedLocationMarker = undefined
+
+  if (!map || !props.pickedLocation) return
+
+  const position: L.LatLngExpression = [
+    props.pickedLocation.latitude,
+    props.pickedLocation.longitude,
+  ]
+  if (!chinaDataBounds.contains(position)) return
+
+  pickedLocationMarker = L.marker(position, {
+    icon: pickedLocationIcon,
+    interactive: false,
+    keyboard: false,
+    zIndexOffset: 1000,
+  }).addTo(map)
 }
 
 function emitCurrentBounds() {
   if (!map) return
+  renderMarkers()
   const bounds = map.getBounds()
   emit('boundsChange', {
-    minLatitude: bounds.getSouth(),
-    maxLatitude: bounds.getNorth(),
-    minLongitude: bounds.getWest(),
-    maxLongitude: bounds.getEast(),
-  })
+    minLatitude: Math.max(bounds.getSouth(), chinaDataBounds.getSouth()),
+    maxLatitude: Math.min(bounds.getNorth(), chinaDataBounds.getNorth()),
+    minLongitude: Math.max(bounds.getWest(), chinaDataBounds.getWest()),
+    maxLongitude: Math.min(bounds.getEast(), chinaDataBounds.getEast()),
+  }, map.getZoom())
 }
 
 function invalidateMapSize() {
@@ -107,49 +219,60 @@ function invalidateMapSize() {
   })
 }
 
-function markTilesReady() {
-  if (primaryLoadTimer) clearTimeout(primaryLoadTimer)
+function clearPrimaryLoadTimer() {
+  if (primaryLoadTimer) {
+    clearTimeout(primaryLoadTimer)
+    primaryLoadTimer = undefined
+  }
+}
+
+function markTilesReady(generation: number) {
+  if (generation !== tileLoadGeneration) return
+
+  clearPrimaryLoadTimer()
   mapReady.value = true
   mapLoadError.value = false
-  tileErrorCount = 0
 }
 
 function switchToOpenStreetMap() {
   if (!map || activeTileProvider === 'osm') return
 
+  const generation = ++tileLoadGeneration
+
   tileLayer?.remove()
   annotationLayer?.remove()
-  if (primaryLoadTimer) clearTimeout(primaryLoadTimer)
+  clearPrimaryLoadTimer()
   activeTileProvider = 'osm'
-  tileErrorCount = 0
   mapReady.value = false
   mapLoadError.value = false
 
   tileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
     maxZoom: 18,
+    bounds: chinaTileBounds,
+    noWrap: true,
     updateWhenIdle: true,
     keepBuffer: 3,
   })
-    .on('tileload', markTilesReady)
-    .on('tileerror', () => {
-      tileErrorCount += 1
-      if (!mapReady.value && tileErrorCount >= 3) mapLoadError.value = true
-    })
+    .on('tileload', () => markTilesReady(generation))
     .addTo(map)
-}
 
-function handleTiandituTileError() {
-  tileErrorCount += 1
-  if (tileErrorCount >= 3) switchToOpenStreetMap()
+  // 缩放时会并发请求很多瓦片，少量请求失败不代表整张地图不可用。
+  // 只有一段时间内完全没有瓦片成功加载，才显示底图错误。
+  primaryLoadTimer = setTimeout(() => {
+    if (generation === tileLoadGeneration && !mapReady.value) {
+      mapLoadError.value = true
+    }
+  }, 12_000)
 }
 
 function createTileLayer() {
+  const generation = ++tileLoadGeneration
+
   tileLayer?.remove()
   annotationLayer?.remove()
-  if (primaryLoadTimer) clearTimeout(primaryLoadTimer)
+  clearPrimaryLoadTimer()
   activeTileProvider = 'tianditu'
-  tileErrorCount = 0
   mapReady.value = false
   mapLoadError.value = false
 
@@ -161,46 +284,59 @@ function createTileLayer() {
   tileLayer = L.tileLayer(tiandituTileUrl('vec_w'), {
     attribution: '&copy; <a href="https://www.tianditu.gov.cn/" target="_blank" rel="noopener">天地图</a>',
     maxZoom: 18,
+    bounds: chinaTileBounds,
+    noWrap: true,
     subdomains: tiandituSubdomains,
     updateWhenIdle: true,
     keepBuffer: 3,
   })
-    .on('tileload', markTilesReady)
-    .on('tileerror', handleTiandituTileError)
+    .on('tileload', () => markTilesReady(generation))
     .addTo(map!)
 
   // 天地图把道路底图和中文地名标注拆成两个图层，需要按顺序叠加。
   annotationLayer = L.tileLayer(tiandituTileUrl('cva_w'), {
     maxZoom: 18,
+    bounds: chinaTileBounds,
+    noWrap: true,
     subdomains: tiandituSubdomains,
     updateWhenIdle: true,
     keepBuffer: 3,
-  })
-    .on('tileerror', handleTiandituTileError)
-    .addTo(map!)
+  }).addTo(map!)
 
   // 海外或运营商网络若无法及时连接天地图，自动启用国际备用底图。
   primaryLoadTimer = setTimeout(() => {
-    if (!mapReady.value) switchToOpenStreetMap()
+    if (generation === tileLoadGeneration && !mapReady.value) switchToOpenStreetMap()
   }, 8_000)
 }
-
 function initializeMap() {
   if (!mapElement.value || map) return
 
   // Leaflet 必须在真实 DOM 挂载后创建，否则无法正确计算地图尺寸。
   map = L.map(mapElement.value!, {
-    center: [35.5, 104.2],
-    zoom: 4,
+    center: props.focus && chinaDataBounds.contains([props.focus.latitude, props.focus.longitude])
+      ? [props.focus.latitude, props.focus.longitude]
+      : chinaCenter,
+    zoom: props.focus?.zoom ?? 4,
+    minZoom: 4,
+    maxZoom: 18,
+    maxBounds: chinaViewportBounds,
+    maxBoundsViscosity: 0.9,
+    worldCopyJump: false,
     zoomControl: true,
     preferCanvas: true,
   })
+  // Leaflet 1.8+ 默认 attribution 前缀内嵌乌克兰旗 SVG，与本项目政治中立立场不符；
+  // 覆写为纯文字署名，保留瓦片版权（OSM 政策要求署名，不整体关闭控件）。
+  map.attributionControl?.setPrefix('Leaflet')
 
   createTileLayer()
 
   markerLayer = L.layerGroup().addTo(map)
+  renderPickedLocation()
   map.on('click', (event: L.LeafletMouseEvent) => {
-    emit('pick', event.latlng.lat, event.latlng.lng)
+    if (chinaDataBounds.contains(event.latlng)) {
+      emit('pick', event.latlng.lat, event.latlng.lng)
+    }
   })
   map.on('moveend', emitCurrentBounds)
 
@@ -228,6 +364,21 @@ onMounted(async () => {
 })
 
 watch([() => props.foods, locale], renderMarkers, { deep: true })
+watch(() => props.pickedLocation, renderPickedLocation, { deep: true })
+watch(
+  () => props.focus,
+  (focus) => {
+    if (map && focus) {
+      const destination: L.LatLngExpression = [focus.latitude, focus.longitude]
+      if (chinaDataBounds.contains(destination)) {
+        map.flyTo(destination, focus.zoom, { duration: 0.8 })
+      } else {
+        map.flyTo(chinaCenter, 4, { duration: 0.8 })
+      }
+    }
+  },
+  { deep: true },
+)
 
 onBeforeUnmount(() => {
   // 主动释放地图事件和 DOM 引用，避免路由往返时重复初始化。
@@ -237,6 +388,7 @@ onBeforeUnmount(() => {
   if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame)
   if (mountFrame !== undefined) cancelAnimationFrame(mountFrame)
   if (primaryLoadTimer) clearTimeout(primaryLoadTimer)
+  pickedLocationMarker?.remove()
   map?.remove()
 })
 </script>

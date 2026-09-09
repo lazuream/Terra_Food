@@ -7,6 +7,7 @@ import com.dayan.food.service.CityCenterService;
 import com.dayan.food.service.RegionService;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,16 +26,16 @@ public class RegionServiceImpl implements RegionService {
 
     @Override
     @Cacheable(cacheNames = "regions", key = "'all'")
-    @Transactional(readOnly = true)
+    @CacheEvict(cacheNames = "regions", allEntries = true)
+    @Transactional
     public List<RegionVO> list() {
         return regionMapper.findAll().stream()
-                .map(RegionVO::from)
+                .map(this::toVO)
                 .toList();
     }
 
     @Override
-    @CacheEvict(cacheNames = "regions", allEntries = true)
-    @Transactional
+    @Transactional(readOnly = true)
     public RegionVO resolveLocation(String province, String city) {
         String normalizedProvince = cityCenterService.normalizeProvince(province);
         String normalizedCity = normalizeCity(city);
@@ -49,9 +50,19 @@ public class RegionServiceImpl implements RegionService {
                     normalizedProvince,
                     normalizedProvince + " · " + normalizedCity + "地方美食"
             );
-            regionMapper.insert(region);
+            try {
+                regionMapper.insert(region);
+            } catch (DuplicateKeyException exception) {
+                // 两个登录用户同时首次收录同一城市时，复用另一事务刚创建的记录。
+                region = regionMapper.findByNameAndProvince(normalizedCity, normalizedProvince);
+                if (region == null) throw exception;
+            }
         }
-        return RegionVO.from(region);
+        return toVO(region);
+    }
+
+    private RegionVO toVO(Region region) {
+        return RegionVO.from(region, cityCenterService.findCenter(region.getProvince(), region.getName()));
     }
 
     private String normalizeCity(String city) {

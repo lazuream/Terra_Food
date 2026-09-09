@@ -9,10 +9,21 @@ import {
   getRegions,
   getUsers,
   importFoodSpreadsheet,
+  reviewUserItem,
   setUserActive,
+  setUserRole,
   reviewFood,
 } from '../api'
-import type { AuthUser, Food, FoodImportResult, FoodReviewStatus, Region } from '../types'
+import { useAuth } from '../auth'
+import type {
+  AuthUser,
+  Food,
+  FoodImportResult,
+  FoodReviewStatus,
+  PendingReview,
+  Region,
+  ReviewItemStatus,
+} from '../types'
 
 type AdminTab = 'foods' | 'reviews' | 'users'
 type PageSize = 10 | 20 | 50
@@ -20,6 +31,7 @@ type PageSize = 10 | 20 | 50
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const { t } = useI18n()
+const auth = useAuth()
 const activeTab = ref<AdminTab>('foods')
 const foods = ref<Food[]>([])
 const regions = ref<Region[]>([])
@@ -46,6 +58,9 @@ const foodsPageTotal = computed(() => {
   return Math.max(1, Math.ceil(foodsTotal.value / foodsPageSize.value))
 })
 
+const viewingFood = ref<Food | null>(null)
+const reviewingUser = ref<AuthUser | null>(null)
+
 const usersPageTotal = computed(() => Math.max(1, Math.ceil(usersTotal.value / usersPageSize.value)))
 
 const visibleFoods = computed(() => foods.value)
@@ -53,15 +68,24 @@ const canPrevFoods = computed(() => foodsPage.value > 1)
 const canNextFoods = computed(() => foodsPage.value < foodsPageTotal.value)
 const canPrevUsers = computed(() => usersPage.value > 1)
 const canNextUsers = computed(() => usersPage.value < usersPageTotal.value)
+const usersPageStart = computed(() => users.value.length ? (usersPage.value - 1) * usersPageSize.value + 1 : 0)
+const usersPageEnd = computed(() => Math.min(usersPage.value * usersPageSize.value, usersTotal.value))
+
+const canManageRoles = computed(() => auth.currentUser.value?.role === 'ADMIN')
+
+// 行级操作进行中的菜品/用户集合：防止重复提交与切换数据时的串扰。
+const pendingFoodIds = ref<Set<number>>(new Set())
+const pendingUserIds = ref<Set<number>>(new Set())
 
 const foodsPageStart = computed(() => foods.value.length ? (foodsPage.value - 1) * foodsPageSize.value + 1 : 0)
 const foodsPageEnd = computed(() => Math.min(foodsPage.value * foodsPageSize.value, foodsTotal.value))
 
 function switchTab(tab: AdminTab) {
   activeTab.value = tab
-  if (tab === 'users' && !users.value.length && !usersLoading.value && !loading.value) {
+  // 每次进入用户标签都重新拉取，避免长时间停留在后台时显示挂载时的陈旧数据。
+  if (tab === 'users') {
     void loadUsersPage(1, usersPageSize.value)
-  } else if (tab !== 'users') {
+  } else {
     void loadFoodsPage(1, foodsPageSize.value)
   }
 }
@@ -76,7 +100,9 @@ function formatDateTime(value: string) {
 }
 
 function roleLabel(role: AuthUser['role']) {
-  return role === 'ADMIN' ? t('admin.adminRole') : t('admin.userRole')
+  if (role === 'ADMIN') return t('admin.adminRole')
+  if (role === 'SUB_ADMIN') return t('admin.subAdminRole')
+  return t('admin.userRole')
 }
 
 function clampPageSize(size: number): PageSize {
@@ -116,30 +142,43 @@ function applyFoodsPage(response: Awaited<ReturnType<typeof getAdminFoods>>) {
   pendingFoodTotal.value = response.pendingTotal
 }
 
+let foodsRequestSequence = 0
+
 async function loadFoodsPage(page = foodsPage.value, pageSize = foodsPageSize.value) {
+  const requestSequence = ++foodsRequestSequence
   loading.value = true
   error.value = ''
   try {
     const status = activeTab.value === 'reviews' ? 'PENDING' : undefined
-    applyFoodsPage(await getAdminFoods(page, pageSize, status))
+    const response = await getAdminFoods(page, pageSize, status)
+    if (requestSequence !== foodsRequestSequence) return
+    applyFoodsPage(response)
   } catch {
-    error.value = t('admin.loadError')
+    if (requestSequence === foodsRequestSequence) {
+      error.value = t('admin.loadError')
+    }
   } finally {
-    loading.value = false
+    if (requestSequence === foodsRequestSequence) {
+      loading.value = false
+    }
   }
 }
 
 async function reviewSubmission(food: Food, status: Extract<FoodReviewStatus, 'APPROVED' | 'REJECTED'>) {
+  if (pendingFoodIds.value.has(food.id)) return
   const action = status === 'APPROVED' ? t('admin.approve') : t('admin.reject')
   if (!window.confirm(t('admin.reviewConfirm', { action, name: food.name }))) {
     return
   }
 
+  pendingFoodIds.value.add(food.id)
   try {
     await reviewFood(food.id, { status })
     await loadFoodsPage(foodsPage.value, foodsPageSize.value)
   } catch {
     error.value = t('admin.reviewError')
+  } finally {
+    pendingFoodIds.value.delete(food.id)
   }
 }
 
@@ -149,37 +188,50 @@ function reviewStatusLabel(status: FoodReviewStatus) {
   return t('admin.rejected')
 }
 
+let usersRequestSequence = 0
+
 async function loadUsersPage(page = usersPage.value, pageSize = usersPageSize.value) {
+  const requestSequence = ++usersRequestSequence
   usersLoading.value = true
   usersError.value = ''
 
   try {
     const response = await getUsers(page, pageSize)
+    if (requestSequence !== usersRequestSequence) return
     users.value = response.items
     usersTotal.value = response.total
     usersPage.value = response.page
     usersPageSize.value = clampPageSize(response.pageSize)
   } catch {
-    usersError.value = t('admin.userLoadError')
+    if (requestSequence === usersRequestSequence) {
+      usersError.value = t('admin.userLoadError')
+    }
   } finally {
-    usersLoading.value = false
+    if (requestSequence === usersRequestSequence) {
+      usersLoading.value = false
+    }
   }
 }
 
 async function removeFood(food: Food) {
+  if (pendingFoodIds.value.has(food.id)) return
   if (!window.confirm(t('admin.deleteConfirm', { name: food.name }))) {
     return
   }
 
+  pendingFoodIds.value.add(food.id)
   try {
     await deleteFood(food.id)
     await loadFoodsPage(foodsPage.value, foodsPageSize.value)
   } catch {
     error.value = t('admin.deleteError')
+  } finally {
+    pendingFoodIds.value.delete(food.id)
   }
 }
 
 async function toggleUserActive(user: AuthUser) {
+  if (pendingUserIds.value.has(user.id)) return
   const targetState = !user.active
   const action = targetState ? t('admin.enable') : t('admin.disable')
 
@@ -187,6 +239,7 @@ async function toggleUserActive(user: AuthUser) {
     return
   }
 
+  pendingUserIds.value.add(user.id)
   usersLoading.value = true
   usersError.value = ''
 
@@ -196,15 +249,67 @@ async function toggleUserActive(user: AuthUser) {
   } catch {
     usersError.value = t('admin.userActionError')
   } finally {
+    pendingUserIds.value.delete(user.id)
+    usersLoading.value = false
+  }
+}
+
+async function toggleSubAdmin(user: AuthUser) {
+  if (pendingUserIds.value.has(user.id)) return
+  const role = user.role === 'SUB_ADMIN' ? 'USER' : 'SUB_ADMIN'
+  const action = role === 'SUB_ADMIN' ? t('admin.promoteSubAdmin') : t('admin.revokeSubAdmin')
+  if (!window.confirm(t('admin.roleChangeConfirm', { action, name: user.displayName || user.username }))) {
+    return
+  }
+
+  pendingUserIds.value.add(user.id)
+  usersLoading.value = true
+  usersError.value = ''
+  try {
+    await setUserRole(user.id, { role })
+    await loadUsersPage(usersPage.value, usersPageSize.value)
+  } catch {
+    usersError.value = t('admin.roleActionError')
+  } finally {
+    pendingUserIds.value.delete(user.id)
+    usersLoading.value = false
+  }
+}
+
+async function reviewItemSubmission(item: PendingReview, status: Extract<ReviewItemStatus, 'APPROVED' | 'REJECTED'>) {
+  const targetUser = reviewingUser.value
+  if (!targetUser || pendingUserIds.value.has(targetUser.id)) return
+  const action = status === 'APPROVED' ? t('admin.approve') : t('admin.reject')
+  if (!window.confirm(t('admin.reviewItemConfirm', {
+    action,
+    field: t(`admin.reviewField_${item.field}`),
+    name: targetUser.displayName || targetUser.username,
+  }))) {
+    return
+  }
+
+  pendingUserIds.value.add(targetUser.id)
+  usersLoading.value = true
+  usersError.value = ''
+  try {
+    await reviewUserItem(targetUser.id, { field: item.field, status })
+    reviewingUser.value = null
+    await loadUsersPage(usersPage.value, usersPageSize.value)
+  } catch {
+    usersError.value = t('admin.signatureReviewError')
+  } finally {
+    pendingUserIds.value.delete(targetUser.id)
     usersLoading.value = false
   }
 }
 
 async function removeUser(user: AuthUser) {
+  if (pendingUserIds.value.has(user.id)) return
   if (!window.confirm(t('admin.deleteUserConfirm', { name: user.displayName || user.username }))) {
     return
   }
 
+  pendingUserIds.value.add(user.id)
   usersLoading.value = true
   usersError.value = ''
 
@@ -218,6 +323,7 @@ async function removeUser(user: AuthUser) {
   } catch {
     usersError.value = t('admin.userActionError')
   } finally {
+    pendingUserIds.value.delete(user.id)
     usersLoading.value = false
   }
 }
@@ -346,6 +452,8 @@ onMounted(loadFoodsAndMeta)
           <span>{{ t('admin.skipped', { count: importResult.skippedCount }) }}</span>
           <span>{{ t('admin.duplicates', { count: importResult.duplicateCount }) }}</span>
           <span>{{ t('admin.anonymous', { count: importResult.anonymousCount }) }}</span>
+          <span v-if="importResult.invalidCount">{{ t('admin.invalid', { count: importResult.invalidCount }) }}</span>
+          <span v-if="importResult.truncatedCount">{{ t('admin.truncated', { count: importResult.truncatedCount }) }}</span>
           <details v-if="importResult.issues.length">
             <summary>{{ t('admin.issueCount', { count: importResult.issues.length }) }}</summary>
             <ul>
@@ -385,11 +493,12 @@ onMounted(loadFoodsAndMeta)
                   <td>{{ new Date(food.createdAt).toLocaleDateString() }}</td>
                   <td>
                     <div class="admin-user-actions">
+                      <button class="admin-user-action" type="button" @click="viewingFood = food">{{ t('admin.view') }}</button>
                       <template v-if="food.reviewStatus === 'PENDING'">
-                        <button class="admin-user-action" type="button" @click="reviewSubmission(food, 'APPROVED')">{{ t('admin.approve') }}</button>
-                        <button class="danger-button" type="button" @click="reviewSubmission(food, 'REJECTED')">{{ t('admin.reject') }}</button>
+                        <button class="admin-user-action" type="button" :disabled="pendingFoodIds.has(food.id)" @click="reviewSubmission(food, 'APPROVED')">{{ t('admin.approve') }}</button>
+                        <button class="danger-button" type="button" :disabled="pendingFoodIds.has(food.id)" @click="reviewSubmission(food, 'REJECTED')">{{ t('admin.reject') }}</button>
                       </template>
-                      <button class="danger-button" @click="removeFood(food)">{{ t('admin.delete') }}</button>
+                      <button class="danger-button" :disabled="pendingFoodIds.has(food.id)" @click="removeFood(food)">{{ t('admin.delete') }}</button>
                     </div>
                   </td>
                 </tr>
@@ -438,6 +547,8 @@ onMounted(loadFoodsAndMeta)
                   <th>{{ t('admin.userId') }}</th>
                   <th>{{ t('admin.username') }}</th>
                   <th>{{ t('admin.displayName') }}</th>
+                  <th>{{ t('admin.email') }}</th>
+                  <th>{{ t('admin.signature') }}</th>
                   <th>{{ t('admin.role') }}</th>
                   <th>{{ t('admin.status') }}</th>
                   <th>{{ t('admin.createdAt') }}</th>
@@ -448,7 +559,21 @@ onMounted(loadFoodsAndMeta)
                 <tr v-for="user in users" :key="user.id">
                   <td>{{ user.id }}</td>
                   <td>{{ user.username }}</td>
-                  <td>{{ user.displayName }}</td>
+                  <td>
+                    {{ user.pendingReviews?.find((item) => item.field === 'DISPLAY_NAME')?.pendingValue || user.displayName }}
+                    <span
+                      v-if="user.pendingReviews?.some((item) => item.field === 'DISPLAY_NAME')"
+                      class="admin-pending-mark"
+                    >{{ t('admin.signaturePendingMark') }}</span>
+                  </td>
+                  <td>{{ user.email || '—' }}</td>
+                  <td>
+                    <span v-if="user.pendingReviews?.some((item) => item.field === 'SIGNATURE')" class="admin-signature pending">
+                      {{ user.pendingReviews.find((item) => item.field === 'SIGNATURE')?.pendingValue }}
+                    </span>
+                    <span v-else-if="user.signature">{{ user.signature }}</span>
+                    <span v-else>—</span>
+                  </td>
                   <td>{{ roleLabel(user.role) }}</td>
                   <td>
                     <span class="admin-user-status" :class="{ inactive: !user.active }">
@@ -458,10 +583,26 @@ onMounted(loadFoodsAndMeta)
                   <td>{{ formatDateTime(user.createdAt) }}</td>
                   <td>
                     <div class="admin-user-actions">
-                      <button class="admin-user-action" type="button" @click="toggleUserActive(user)">
+                      <button
+                        v-if="user.pendingReviews?.length"
+                        class="admin-user-action"
+                        type="button"
+                        :disabled="pendingUserIds.has(user.id)"
+                        @click="reviewingUser = user"
+                      >{{ t('admin.reviewPendingCount', { count: user.pendingReviews.length }) }}</button>
+                      <button
+                        v-if="canManageRoles && user.role !== 'ADMIN'"
+                        class="admin-user-action"
+                        type="button"
+                        :disabled="pendingUserIds.has(user.id)"
+                        @click="toggleSubAdmin(user)"
+                      >
+                        {{ user.role === 'SUB_ADMIN' ? t('admin.revokeSubAdmin') : t('admin.promoteSubAdmin') }}
+                      </button>
+                      <button class="admin-user-action" type="button" :disabled="pendingUserIds.has(user.id)" @click="toggleUserActive(user)">
                         {{ user.active ? t('admin.disable') : t('admin.enable') }}
                       </button>
-                      <button class="danger-button" type="button" @click="removeUser(user)">{{ t('admin.delete') }}</button>
+                      <button class="danger-button" type="button" :disabled="pendingUserIds.has(user.id)" @click="removeUser(user)">{{ t('admin.delete') }}</button>
                     </div>
                   </td>
                 </tr>
@@ -478,7 +619,7 @@ onMounted(loadFoodsAndMeta)
             </label>
 
             <p>
-              {{ t('admin.pageInfo', { start: (usersPage - 1) * usersPageSize + 1, end: Math.min(usersPage * usersPageSize, usersTotal), total: usersTotal, page: usersPage, totalPages: usersPageTotal }) }}
+              {{ t('admin.pageInfo', { start: usersPageStart, end: usersPageEnd, total: usersTotal, page: usersPage, totalPages: usersPageTotal }) }}
             </p>
 
             <div class="admin-page-controls">
@@ -490,5 +631,123 @@ onMounted(loadFoodsAndMeta)
         </template>
       </template>
     </section>
+
+    <div v-if="viewingFood" class="modal-mask" @click.self="viewingFood = null">
+      <section class="admin-detail-modal">
+        <div class="modal-title">
+          <div>
+            <small>{{ t('admin.reviewManagement') }}</small>
+            <h2>{{ viewingFood.name }}</h2>
+          </div>
+          <button class="icon-button" @click="viewingFood = null">×</button>
+        </div>
+
+        <div
+          v-if="viewingFood.imageUrl"
+          class="admin-detail-photo"
+          :style="{ backgroundImage: `url(${viewingFood.imageUrl})` }"
+        ></div>
+
+        <dl class="admin-detail-grid">
+          <div>
+            <dt>{{ t('admin.region') }}</dt>
+            <dd>{{ viewingFood.region.province }} · {{ viewingFood.region.name }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('admin.creator') }}</dt>
+            <dd>{{ viewingFood.creator.displayName || viewingFood.createdBy || t('admin.anonymousName') }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('upload.address') }}</dt>
+            <dd>{{ viewingFood.address || '—' }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('upload.summary') }}</dt>
+            <dd>{{ viewingFood.summary }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('upload.ingredients') }}</dt>
+            <dd>{{ viewingFood.ingredients }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('upload.story') }}</dt>
+            <dd>{{ viewingFood.story }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('upload.remark') }}</dt>
+            <dd>{{ viewingFood.remark || '—' }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('admin.heat') }}</dt>
+            <dd>{{ viewingFood.heat }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('admin.reviewStatus') }}</dt>
+            <dd>{{ reviewStatusLabel(viewingFood.reviewStatus) }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('admin.createdAt') }}</dt>
+            <dd>{{ formatDateTime(viewingFood.createdAt) }}</dd>
+          </div>
+          <div v-if="viewingFood.reviewedAt">
+            <dt>{{ t('admin.reviewedAt') }}</dt>
+            <dd>{{ viewingFood.reviewedBy || '—' }} · {{ formatDateTime(viewingFood.reviewedAt) }}</dd>
+          </div>
+        </dl>
+
+        <div v-if="viewingFood.reviewStatus === 'PENDING'" class="modal-actions">
+          <button
+            class="admin-user-action"
+            type="button"
+            @click="reviewSubmission(viewingFood, 'APPROVED')"
+          >{{ t('admin.approve') }}</button>
+          <button class="danger-button" type="button" @click="reviewSubmission(viewingFood, 'REJECTED')">
+            {{ t('admin.reject') }}
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="reviewingUser" class="modal-mask" @click.self="reviewingUser = null">
+      <section class="admin-detail-modal">
+        <div class="modal-title">
+          <div>
+            <small>{{ t('admin.eyebrow') }}</small>
+            <h2>{{ t('admin.reviewItems', { name: reviewingUser.displayName || reviewingUser.username }) }}</h2>
+          </div>
+          <button class="icon-button" type="button" @click="reviewingUser = null">×</button>
+        </div>
+
+        <p v-if="!reviewingUser.pendingReviews?.length" class="admin-detail-empty">{{ t('admin.noPending') }}</p>
+        <template v-else>
+          <dl class="admin-detail-grid">
+            <template v-for="item in reviewingUser.pendingReviews" :key="item.id">
+              <div>
+                <dt>{{ t('admin.reviewField_' + item.field) }}</dt>
+                <dd>{{ item.currentValue || '—' }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('admin.reviewPendingLabel') }}</dt>
+                <dd class="review-pending-value">{{ item.pendingValue }}</dd>
+              </div>
+              <div class="review-inline-actions">
+                <button
+                  class="admin-user-action"
+                  type="button"
+                  :disabled="pendingUserIds.has(reviewingUser.id)"
+                  @click="reviewItemSubmission(item, 'APPROVED')"
+                >{{ t('admin.approve') }}</button>
+                <button
+                  class="danger-button"
+                  type="button"
+                  :disabled="pendingUserIds.has(reviewingUser.id)"
+                  @click="reviewItemSubmission(item, 'REJECTED')"
+                >{{ t('admin.reject') }}</button>
+              </div>
+            </template>
+          </dl>
+        </template>
+      </section>
+    </div>
   </section>
 </template>

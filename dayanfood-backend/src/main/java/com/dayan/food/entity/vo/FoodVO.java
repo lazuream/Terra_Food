@@ -1,5 +1,6 @@
 package com.dayan.food.entity.vo;
 
+import com.dayan.food.entity.po.AppUser;
 import com.dayan.food.entity.po.Food;
 import com.dayan.food.entity.enums.FoodReviewStatus;
 
@@ -21,15 +22,21 @@ public record FoodVO(
         String story,
         String ingredients,
         String imageUrl,
+        String remark,
         Integer heat,
         FoodReviewStatus reviewStatus,
         String reviewedBy,
         LocalDateTime reviewedAt,
         String createdBy,
+        UserSummaryVO creator,
         LocalDateTime createdAt
 ) implements Serializable {
 
     public static FoodVO from(Food food) {
+        return from(food, null);
+    }
+
+    public static FoodVO from(Food food, AppUser creator) {
         return new FoodVO(
                 food.getId(),
                 food.getName(),
@@ -41,11 +48,15 @@ public record FoodVO(
                 food.getStory(),
                 food.getIngredients(),
                 food.getImageUrl(),
+                food.getRemark(),
                 food.getHeat(),
                 food.getReviewStatus(),
                 food.getReviewedBy(),
                 food.getReviewedAt(),
                 food.getCreatedBy(),
+                creator == null
+                        ? UserSummaryVO.fallback(food.getCreatedBy())
+                        : UserSummaryVO.from(creator),
                 food.getCreatedAt()
         );
     }

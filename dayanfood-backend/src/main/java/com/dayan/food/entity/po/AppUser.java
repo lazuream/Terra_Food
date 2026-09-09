@@ -1,5 +1,6 @@
 package com.dayan.food.entity.po;
 
+import com.dayan.food.entity.enums.SignatureStatus;
 import com.dayan.food.entity.enums.UserRole;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,6 +19,16 @@ public class AppUser {
 
     private String displayName;
 
+    private String email;
+
+    private String avatarUrl;
+
+    private String signature;
+
+    private String signaturePending;
+
+    private SignatureStatus signatureStatus;
+
     private UserRole role;
 
     private boolean active;
@@ -27,9 +38,14 @@ public class AppUser {
     private LocalDateTime createdAt;
 
     public AppUser(String username, String password, String displayName, UserRole role) {
+        this(username, password, displayName, null, role);
+    }
+
+    public AppUser(String username, String password, String displayName, String email, UserRole role) {
         this.username = username;
         this.password = password;
         this.displayName = displayName;
+        this.email = email;
         this.role = role;
         this.active = true;
         this.createdAt = LocalDateTime.now();

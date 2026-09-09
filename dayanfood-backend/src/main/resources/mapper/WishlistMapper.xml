@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dayan.food.mapper.WishlistMapper">
+    <resultMap id="wishlistResultMap" type="com.dayan.food.entity.po.WishlistItem">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="content" column="content"/>
+        <result property="normalizedContent" column="normalized_content"/>
+        <result property="sourceFoodId" column="source_food_id"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+    <insert id="insertIgnore" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT IGNORE INTO wishlist_item (user_id, content, normalized_content, source_food_id, created_at)
+        VALUES (#{userId}, #{content}, #{normalizedContent}, #{sourceFoodId}, #{createdAt})
+    </insert>
+    <select id="findByUserId" resultMap="wishlistResultMap">
+        SELECT id, user_id, content, normalized_content, source_food_id, created_at
+        FROM wishlist_item WHERE user_id = #{userId}
+        ORDER BY created_at DESC, id DESC
+    </select>
+    <select id="existsBySourceFood" resultType="int">
+        SELECT COUNT(*) FROM wishlist_item
+        WHERE user_id = #{userId} AND source_food_id = #{foodId}
+    </select>
+    <delete id="deleteByIdAndUserId">
+        DELETE FROM wishlist_item WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+</mapper>

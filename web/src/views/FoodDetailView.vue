@@ -1,20 +1,238 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
-import { getFood } from '../api'
-import type { Food } from '../types'
-const route = useRoute()
-const food = ref<Food>()
-const error = ref('')
-const { t } = useI18n()
+import axios from 'axios'
+import { defineAsyncComponent, computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-onMounted(async () => {
+import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
+
+import {
+  addFavorite,
+  addWishlistItem,
+  createFoodComment,
+  getFood,
+  getFoodComments,
+  getFavoriteStatus,
+  getFoodLikeStatus,
+  getWishlistStatus,
+  likeFood,
+  removeFavorite,
+  unlikeFood,
+} from '../api'
+import { useAuth } from '../auth'
+import { apiErrorMessage } from '../apiError'
+import type { Food, FoodComment, FoodLikeStatus } from '../types'
+
+const FoodShareModal = defineAsyncComponent(() => import('../components/FoodShareModal.vue'))
+const shareOpen = ref(false)
+
+const route = useRoute()
+const router = useRouter()
+const auth = useAuth()
+const currentUser = auth.currentUser
+const food = ref<Food>()
+const comments = ref<FoodComment[]>([])
+const commentContent = ref('')
+const error = ref('')
+const commentError = ref('')
+const commentsLoading = ref(false)
+const submittingComment = ref(false)
+const likeStatus = ref<FoodLikeStatus>({ likeCount: 0, likedByMe: false })
+const liking = ref(false)
+const favorited = ref<boolean | null>(null)
+const wishlistListed = ref(false)
+const collectionSaving = ref<'favorite' | 'wishlist'>()
+const collectionError = ref('')
+const statusLoading = ref(true)
+const { t, locale } = useI18n()
+
+let foodLoadController: AbortController | undefined
+
+const heroStyle = computed(() => ({
+  backgroundImage: food.value?.imageUrl
+    ? 'linear-gradient(90deg, rgba(25, 12, 8, 0.78), rgba(25, 12, 8, 0.12)), url("' + food.value.imageUrl + '")'
+    : 'linear-gradient(135deg, #79483a, #211512)',
+}))
+
+function avatarInitial(name: string): string {
+  return Array.from(name.trim())[0]?.toUpperCase() || '·'
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat(locale.value === 'zh-CN' ? 'zh-CN' : 'en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
+async function loadComments(foodIdValue: number) {
+  const signal = foodLoadController?.signal
+  commentsLoading.value = true
+  commentError.value = ''
   try {
-    food.value = await getFood(Number(route.params.id))
+    const result = await getFoodComments(foodIdValue)
+    if (signal?.aborted || Number(route.params.id) !== foodIdValue) return
+    comments.value = result
   } catch {
-    error.value = t('detail.notFound')
+    if (signal?.aborted) return
+    commentError.value = t('detail.commentLoadError')
+  } finally {
+    if (!signal?.aborted) commentsLoading.value = false
   }
+}
+
+async function submitComment() {
+  const content = commentContent.value.trim()
+  if (!content) {
+    commentError.value = t('detail.commentRequired')
+    return
+  }
+
+  const signal = foodLoadController?.signal
+  submittingComment.value = true
+  commentError.value = ''
+  try {
+    const comment = await createFoodComment(Number(route.params.id), { content })
+    if (signal?.aborted) return
+    comments.value.unshift(comment)
+    commentContent.value = ''
+  } catch (requestError) {
+    if (signal?.aborted) return
+    commentError.value = axios.isAxiosError(requestError)
+      ? requestError.response?.data?.message || t('detail.commentSubmitError')
+      : t('detail.commentSubmitError')
+  } finally {
+    if (!signal?.aborted) submittingComment.value = false
+  }
+}
+
+function handleAgentCommentPublished(event: Event) {
+  const publishedFoodId = Number((event as CustomEvent<{ foodId?: number }>).detail?.foodId)
+  if (publishedFoodId === Number(route.params.id)) void loadComments(publishedFoodId)
+}
+
+async function toggleLike() {
+  if (!currentUser.value) {
+    await router.push({ path: '/login', query: { redirect: route.fullPath } })
+    return
+  }
+  if (liking.value) return
+
+  const activeFoodId = Number(route.params.id)
+  const signal = foodLoadController?.signal
+  liking.value = true
+  try {
+    const result = likeStatus.value.likedByMe
+      ? await unlikeFood(activeFoodId)
+      : await likeFood(activeFoodId)
+    if (!signal?.aborted) likeStatus.value = result
+  } catch {
+    if (!signal?.aborted) commentError.value = t('detail.likeError')
+  } finally {
+    if (!signal?.aborted) liking.value = false
+  }
+}
+
+async function toggleFavorite() {
+  if (!currentUser.value) {
+    await router.push({ path: '/login', query: { redirect: route.fullPath } })
+    return
+  }
+  if (collectionSaving.value) return
+  const foodId = Number(route.params.id)
+  const signal = foodLoadController?.signal
+  collectionSaving.value = 'favorite'
+  collectionError.value = ''
+  try {
+    const previous = favorited.value ?? (await getFavoriteStatus(foodId)).favorited
+    if (signal?.aborted) return
+    const result = previous ? await removeFavorite(foodId) : await addFavorite(foodId)
+    if (!signal?.aborted) favorited.value = result.favorited
+  } catch (cause) {
+    if (!signal?.aborted) collectionError.value = apiErrorMessage(cause, t('detail.favoriteError'))
+  } finally {
+    if (!signal?.aborted) collectionSaving.value = undefined
+  }
+}
+
+async function addToWishlist() {
+  if (!currentUser.value) {
+    await router.push({ path: '/login', query: { redirect: route.fullPath } })
+    return
+  }
+  if (wishlistListed.value) {
+    await router.push({ path: '/profile', query: { tab: 'wishlist' } })
+    return
+  }
+  if (collectionSaving.value) return
+  const signal = foodLoadController?.signal
+  collectionSaving.value = 'wishlist'
+  collectionError.value = ''
+  try {
+    await addWishlistItem({ foodId: Number(route.params.id) })
+    if (!signal?.aborted) wishlistListed.value = true
+  } catch (cause) {
+    if (!signal?.aborted) collectionError.value = apiErrorMessage(cause, t('detail.wishlistError'))
+  } finally {
+    if (!signal?.aborted) collectionSaving.value = undefined
+  }
+}
+// 组件复用时随路由 id 变化重新加载（安全报告 6.6），旧请求用 AbortController 丢弃。
+watch(
+  () => [route.params.id, currentUser.value?.id],
+  async ([id]) => {
+    const foodIdValue = Number(id)
+    shareOpen.value = false
+    foodLoadController?.abort()
+    foodLoadController = new AbortController()
+    const signal = foodLoadController.signal
+    statusLoading.value = true
+    food.value = undefined
+    comments.value = []
+    likeStatus.value = { likeCount: 0, likedByMe: false }
+    favorited.value = null
+    wishlistListed.value = false
+    collectionSaving.value = undefined
+    liking.value = false
+    submittingComment.value = false
+    commentContent.value = ''
+    commentError.value = ''
+    collectionError.value = ''
+    error.value = ''
+
+    try {
+      const loaded = await getFood(foodIdValue)
+      if (signal.aborted) return
+      food.value = loaded
+    } catch {
+      if (!signal.aborted) error.value = t('detail.notFound')
+      return
+    }
+    // Failures in optional status endpoints must not erase successful responses.
+    const results = await Promise.allSettled([
+      getFoodLikeStatus(foodIdValue),
+      currentUser.value ? getFavoriteStatus(foodIdValue) : Promise.resolve({ favorited: false }),
+      currentUser.value ? getWishlistStatus(foodIdValue) : Promise.resolve({ listed: false }),
+      loadComments(foodIdValue),
+    ])
+    if (signal.aborted) return
+    statusLoading.value = false
+    const [likes, favorite, wishlist] = results
+    if (likes.status === 'fulfilled' && !liking.value) likeStatus.value = likes.value
+    if (favorite.status === 'fulfilled' && !collectionSaving.value) favorited.value = favorite.value.favorited
+    if (wishlist.status === 'fulfilled' && !collectionSaving.value) wishlistListed.value = wishlist.value.listed
+    if (favorite.status === 'rejected') collectionError.value = apiErrorMessage(favorite.reason, t('detail.favoriteError'))
+    else if (wishlist.status === 'rejected') collectionError.value = apiErrorMessage(wishlist.reason, t('detail.wishlistError'))
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  window.addEventListener('agent:comment-published', handleAgentCommentPublished)
+})
+
+onBeforeUnmount(() => {
+  foodLoadController?.abort()
+  window.removeEventListener('agent:comment-published', handleAgentCommentPublished)
 })
 </script>
 
@@ -24,16 +242,85 @@ onMounted(async () => {
       {{ t('detail.back') }}
     </RouterLink>
 
-    <div
-      class="detail-hero"
-      :style="{ backgroundImage: `linear-gradient(90deg, rgba(25, 12, 8, 0.78), rgba(25, 12, 8, 0.12)), url(${food.imageUrl})` }"
-    >
+    <div class="detail-hero" :style="heroStyle">
+      <button type="button" class="food-share-button" @click="shareOpen = true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m9 8 6-3m-6 11 6 3"/><circle cx="6" cy="12" r="4"/><circle cx="18" cy="4" r="3"/><circle cx="18" cy="20" r="3"/></svg>
+        {{ t('share.open') }}
+      </button>
       <div>
         <small>{{ food.region.province }} · {{ food.region.name }}</small>
         <h1>{{ food.name }}</h1>
         <p>{{ food.summary }}</p>
+        <div class="collection-actions">
+          <button
+            class="like-button"
+            :class="{ liked: likeStatus.likedByMe }"
+            :disabled="statusLoading || liking"
+            type="button"
+            @click="toggleLike"
+          >
+            <span aria-hidden="true">{{ likeStatus.likedByMe ? '♥' : '♡' }}</span>
+            {{ t('detail.likeCount', { count: likeStatus.likeCount }) }}
+          </button>
+          <button
+            class="collection-button"
+            :class="{ active: favorited }"
+            :disabled="statusLoading || collectionSaving !== undefined"
+            type="button"
+            @click="toggleFavorite"
+          >
+            <span aria-hidden="true">{{ favorited ? '★' : '☆' }}</span>
+            {{ favorited ? t('detail.favorited') : t('detail.favorite') }}
+          </button>
+          <button
+            class="collection-button"
+            :class="{ active: wishlistListed }"
+            :disabled="statusLoading || collectionSaving !== undefined"
+            type="button"
+            @click="addToWishlist"
+          >
+            <span aria-hidden="true">＋</span>
+            {{ wishlistListed ? t('detail.wishlistAdded') : t('detail.addWishlist') }}
+          </button>
+        </div>
+        <p v-if="collectionError" class="collection-action-error" aria-live="polite">{{ collectionError }}</p>
       </div>
     </div>
+
+    <FoodShareModal v-if="shareOpen" :food="food" @close="shareOpen = false" />
+
+    <section class="food-creator">
+      <RouterLink
+        v-if="food.creator.id"
+        :to="`/users/${food.creator.id}`"
+        class="food-creator-profile"
+      >
+        <div class="user-avatar food-creator-avatar">
+          <img
+            v-if="food.creator.avatarUrl"
+            :src="food.creator.avatarUrl"
+            :alt="t('detail.userAvatar', { name: food.creator.displayName })"
+          >
+          <span v-else>{{ avatarInitial(food.creator.displayName) }}</span>
+        </div>
+        <div>
+          <small>{{ t('detail.uploadedBy') }}</small>
+          <strong>{{ food.creator.displayName }}</strong>
+          <span>@{{ food.creator.username }}</span>
+        </div>
+      </RouterLink>
+      <div v-else class="food-creator-profile">
+        <div class="user-avatar food-creator-avatar">
+          <span>{{ avatarInitial(food.creator.displayName) }}</span>
+        </div>
+        <div>
+          <small>{{ t('detail.uploadedBy') }}</small>
+          <strong>{{ food.creator.displayName }}</strong>
+          <span>@{{ food.creator.username }}</span>
+        </div>
+      </div>
+    </section>
+
     <article>
       <section>
         <small>{{ t('detail.ingredientsEyebrow') }}</small>
@@ -45,7 +332,100 @@ onMounted(async () => {
         <h2>{{ t('detail.story') }}</h2>
         <p>{{ food.story }}</p>
       </section>
+      <section v-if="food.remark">
+        <small>{{ t('detail.remarkEyebrow') }}</small>
+        <h2>{{ t('detail.remark') }}</h2>
+        <p>{{ food.remark }}</p>
+      </section>
     </article>
+
+    <section class="comment-section">
+      <div class="comment-heading">
+        <div>
+          <small>{{ t('detail.commentsEyebrow') }}</small>
+          <h2>{{ t('detail.comments') }}</h2>
+        </div>
+        <span>{{ t('detail.commentCount', { count: comments.length }) }}</span>
+      </div>
+
+      <form v-if="currentUser" class="comment-form" @submit.prevent="submitComment">
+        <div class="user-avatar comment-form-avatar">
+          <img
+            v-if="currentUser.avatarUrl"
+            :src="currentUser.avatarUrl"
+            :alt="t('detail.userAvatar', { name: currentUser.displayName })"
+          >
+          <span v-else>{{ avatarInitial(currentUser.displayName) }}</span>
+        </div>
+        <div>
+          <label for="food-comment">{{ t('detail.commentAs', { name: currentUser.displayName }) }}</label>
+          <textarea
+            id="food-comment"
+            v-model="commentContent"
+            maxlength="500"
+            :placeholder="t('detail.commentPlaceholder')"
+            required
+          />
+          <div class="comment-form-actions">
+            <small>{{ commentContent.length }}/500</small>
+            <button :disabled="submittingComment">
+              {{ submittingComment ? t('detail.commentSubmitting') : t('detail.commentSubmit') }}
+            </button>
+          </div>
+        </div>
+      </form>
+      <p v-else class="comment-login-hint">
+        <RouterLink to="/login" :query="{ redirect: route.fullPath }">{{ t('detail.loginToComment') }}</RouterLink>
+      </p>
+
+      <p v-if="commentError" class="form-error comment-message">{{ commentError }}</p>
+      <p v-if="commentsLoading" class="comment-state">{{ t('detail.commentsLoading') }}</p>
+      <p v-else-if="comments.length === 0" class="comment-state">{{ t('detail.commentsEmpty') }}</p>
+
+      <div v-else class="comment-list">
+        <div v-for="comment in comments" :key="comment.id" class="comment-card">
+          <RouterLink
+            v-if="comment.author.id"
+            :to="`/users/${comment.author.id}`"
+            class="comment-profile-link"
+          >
+            <div class="user-avatar comment-avatar">
+              <img
+                v-if="comment.author.avatarUrl"
+                :src="comment.author.avatarUrl"
+                :alt="t('detail.userAvatar', { name: comment.author.displayName })"
+              >
+              <span v-else>{{ avatarInitial(comment.author.displayName) }}</span>
+            </div>
+          </RouterLink>
+          <div v-else class="user-avatar comment-avatar">
+            <img
+              v-if="comment.author.avatarUrl"
+              :src="comment.author.avatarUrl"
+              :alt="t('detail.userAvatar', { name: comment.author.displayName })"
+            >
+            <span v-else>{{ avatarInitial(comment.author.displayName) }}</span>
+          </div>
+          <div class="comment-body">
+            <div class="comment-meta">
+              <div>
+                <RouterLink
+                  v-if="comment.author.id"
+                  :to="`/users/${comment.author.id}`"
+                  class="comment-author-link"
+                >
+                  <strong>{{ comment.author.displayName }}</strong>
+                </RouterLink>
+                <strong v-else>{{ comment.author.displayName }}</strong>
+                <span>@{{ comment.author.username }}</span>
+              </div>
+              <time :datetime="comment.createdAt">{{ formatDate(comment.createdAt) }}</time>
+            </div>
+            <p>{{ comment.content }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
   <p v-else class="state">
     {{ error || t('detail.loading') }}

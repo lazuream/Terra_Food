@@ -5,7 +5,9 @@ import com.dayan.food.entity.vo.FoodVO;
 import com.dayan.food.entity.vo.FoodPageVO;
 import com.dayan.food.entity.enums.FoodReviewStatus;
 import com.dayan.food.entity.dto.FoodReviewDTO;
+import com.dayan.food.entity.dto.ReviewItemDTO;
 import com.dayan.food.entity.dto.UserActiveUpdateDTO;
+import com.dayan.food.entity.dto.UserRoleUpdateDTO;
 import com.dayan.food.service.AppUserService;
 import com.dayan.food.service.FoodService;
 import jakarta.validation.Valid;
@@ -75,6 +77,24 @@ public class AdminController {
             Authentication authentication
     ) {
         appUserService.setActive(id, request.active(), authentication.getName());
+    }
+
+    @PatchMapping("/users/{id}/role")
+    public void setRole(
+            @PathVariable Long id,
+            @RequestBody @Valid UserRoleUpdateDTO request,
+            Authentication authentication
+    ) {
+        appUserService.setRole(id, request.role(), authentication.getName());
+    }
+
+    @PatchMapping("/users/{id}/review")
+    public void reviewItem(
+            @PathVariable Long id,
+            @RequestBody @Valid ReviewItemDTO request,
+            Authentication authentication
+    ) {
+        appUserService.reviewItem(id, request.field(), request.status(), authentication.getName());
     }
 
     @DeleteMapping("/users/{id}")

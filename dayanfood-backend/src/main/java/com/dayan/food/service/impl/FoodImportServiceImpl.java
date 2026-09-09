@@ -1,5 +1,6 @@
 package com.dayan.food.service.impl;
 
+import com.dayan.food.cache.CacheInvalidator;
 import com.dayan.food.entity.dto.FoodImportRowDTO;
 import com.dayan.food.entity.enums.FoodReviewStatus;
 import com.dayan.food.entity.po.AppUser;
@@ -20,7 +21,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
-import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -59,21 +60,26 @@ public class FoodImportServiceImpl implements FoodImportService {
     private final RegionMapper regionMapper;
     private final AppUserMapper appUserMapper;
     private final CityCenterService cityCenterService;
+    private final CacheManager cacheManager;
+    private final CacheInvalidator cacheInvalidator;
 
     public FoodImportServiceImpl(
             FoodMapper foodMapper,
             RegionMapper regionMapper,
             AppUserMapper appUserMapper,
-            CityCenterService cityCenterService
+            CityCenterService cityCenterService,
+            CacheManager cacheManager,
+            CacheInvalidator cacheInvalidator
     ) {
         this.foodMapper = foodMapper;
         this.regionMapper = regionMapper;
         this.appUserMapper = appUserMapper;
         this.cityCenterService = cityCenterService;
+        this.cacheManager = cacheManager;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     @Override
-    @CacheEvict(cacheNames = {"foodLists", "regions"}, allEntries = true)
     @Transactional
     public FoodImportResultVO importSpreadsheet(MultipartFile file) {
         validateFile(file);
@@ -81,11 +87,13 @@ public class FoodImportServiceImpl implements FoodImportService {
         var parsedRows = new ArrayList<FoodImportRowDTO>();
         var issues = new ArrayList<FoodImportIssueVO>();
         int totalRows;
+        int truncated;
 
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             ParseResult parsed = parseWorkbook(workbook, issues);
             parsedRows.addAll(parsed.rows());
             totalRows = parsed.totalRows();
+            truncated = parsed.truncated();
         } catch (IOException exception) {
             throw new IllegalArgumentException("无法读取表格，请确认文件未损坏", exception);
         }
@@ -93,9 +101,16 @@ public class FoodImportServiceImpl implements FoodImportService {
         int imported = 0;
         int duplicates = 0;
         int anonymous = 0;
+        int invalid = 0;
 
         for (FoodImportRowDTO row : parsedRows) {
-            Region region = findOrCreateRegion(row.province(), row.city());
+            // 与地图选点一致：导入也只接受白名单地区，不再自动创建地区（消除查后插竞态与海外英文地区）。
+            Region region = regionMapper.findByNameAndProvince(row.city(), row.province());
+            if (region == null) {
+                addIssue(issues, row.rowNumber(), "地区未收录白名单：" + row.province() + row.city());
+                invalid++;
+                continue;
+            }
             if (foodMapper.countDuplicate(row.name(), region.getId(), row.address()) > 0) {
                 duplicates++;
                 continue;
@@ -116,6 +131,7 @@ public class FoodImportServiceImpl implements FoodImportService {
                     row.story(),
                     row.ingredients(),
                     null,
+                    null,
                     creator,
                     FoodReviewStatus.APPROVED
             );
@@ -124,12 +140,19 @@ public class FoodImportServiceImpl implements FoodImportService {
         }
 
         int skipped = totalRows - parsedRows.size();
+        // 批量入库后统一在事务提交时失效集合类缓存，避免回滚时误清。
+        cacheInvalidator.clear(cacheManager.getCache("foodLists"));
+        cacheInvalidator.clear(cacheManager.getCache("foodCatalogs"));
+        cacheInvalidator.clear(cacheManager.getCache("foodMarkers"));
+        cacheInvalidator.clear(cacheManager.getCache("regions"));
         return new FoodImportResultVO(
                 totalRows,
                 imported,
                 skipped,
                 duplicates,
                 anonymous,
+                invalid,
+                truncated,
                 List.copyOf(issues)
         );
     }
@@ -139,6 +162,8 @@ public class FoodImportServiceImpl implements FoodImportService {
         var formatter = new DataFormatter(Locale.CHINA);
         FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
         int totalRows = 0;
+        int truncated = 0;
+        boolean limitReached = false;
 
         for (Sheet sheet : workbook) {
             HeaderMapping headers = detectHeaders(sheet, formatter, evaluator);
@@ -146,14 +171,22 @@ public class FoodImportServiceImpl implements FoodImportService {
             String currentCity = "";
 
             for (int rowIndex = headers.rowIndex() + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
-                if (totalRows >= MAX_IMPORT_ROWS) {
-                    addIssue(issues, rowIndex + 1, "超过单次最多 2000 行的限制，后续内容未导入");
-                    return new ParseResult(rows, totalRows);
-                }
-
                 Row poiRow = sheet.getRow(rowIndex);
                 Map<Integer, String> cells = readCells(poiRow, formatter, evaluator);
                 if (cells.isEmpty()) {
+                    continue;
+                }
+
+                if (!limitReached && totalRows >= MAX_IMPORT_ROWS) {
+                    limitReached = true;
+                    addIssue(issues, rowIndex + 1, "超过单次最多 2000 行的限制，后续内容未导入");
+                }
+                if (limitReached) {
+                    // 截断模式下不再解析与入库，只统计被截断的有效行，保证统计守恒。
+                    String provinceCell = value(cells, headers.column(ImportField.PROVINCE, 0));
+                    if (!isHeadingOnly(cells, provinceCell)) {
+                        truncated++;
+                    }
                     continue;
                 }
 
@@ -237,7 +270,7 @@ public class FoodImportServiceImpl implements FoodImportService {
             }
         }
 
-        return new ParseResult(rows, totalRows);
+        return new ParseResult(rows, totalRows, truncated);
     }
 
     private HeaderMapping detectHeaders(Sheet sheet, DataFormatter formatter, FormulaEvaluator evaluator) {
@@ -464,16 +497,6 @@ public class FoodImportServiceImpl implements FoodImportService {
         }
     }
 
-    private Region findOrCreateRegion(String province, String city) {
-        Region existing = regionMapper.findByNameAndProvince(city, province);
-        if (existing != null) {
-            return existing;
-        }
-        var region = new Region(city, province, province + "省" + city + "地方美食");
-        regionMapper.insert(region);
-        return region;
-    }
-
     private String resolveCreator(String identity) {
         if (identity == null || identity.isBlank()) {
             return ANONYMOUS;
@@ -533,6 +556,6 @@ public class FoodImportServiceImpl implements FoodImportService {
     private record AddressCandidate(int column, String value) {
     }
 
-    private record ParseResult(List<FoodImportRowDTO> rows, int totalRows) {
+    private record ParseResult(List<FoodImportRowDTO> rows, int totalRows, int truncated) {
     }
 }

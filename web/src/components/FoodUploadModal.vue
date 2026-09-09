@@ -1,9 +1,17 @@
 <script setup lang="ts">
-import axios from 'axios'
-import { reactive, ref, watch } from 'vue'
+import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { createFood, uploadImage } from '../api'
+import {
+  cacheDraftImage,
+  clearDraft,
+  forgetDraftImage,
+  getCachedDraftImage,
+  readDraft,
+  saveDraft,
+  type DraftImageMeta,
+} from '../drafts'
 import type { Food, FoodCreatePayload, Region } from '../types'
 
 const props = defineProps<{
@@ -11,6 +19,9 @@ const props = defineProps<{
   latitude?: number
   longitude?: number
   regionId?: number
+  address?: string
+  province?: string
+  city?: string
 }>()
 
 const emit = defineEmits<{
@@ -18,18 +29,31 @@ const emit = defineEmits<{
   saved: [food: Food]
 }>()
 
-const form = reactive<FoodCreatePayload>({
+// 坐标只能来自地图选点（通过 props 注入），表单自身不提供默认坐标，
+// 避免未选点时带上无效经纬度直接创建。
+type UploadForm = Omit<FoodCreatePayload, 'latitude' | 'longitude'> & {
+  latitude?: number
+  longitude?: number
+}
+
+const form = reactive<UploadForm>({
   name: '',
-  regionId: 0,
-  latitude: 35.5,
-  longitude: 104.2,
+  regionId: undefined,
+  province: '',
+  city: '',
+  latitude: undefined,
+  longitude: undefined,
+  address: '',
   summary: '',
   story: '',
   ingredients: '',
-  imageUrl: '',
+  remark: '',
 })
 
 const image = ref<File>()
+const imageMeta = ref<DraftImageMeta>()
+const previewUrl = ref('')
+const coverInput = ref<HTMLInputElement>()
 const saving = ref(false)
 const error = ref('')
 const { t } = useI18n()
@@ -46,25 +70,92 @@ watch(
 )
 
 watch(
-  () => props.regionId,
-  (regionId) => {
-    if (regionId != null) {
-      form.regionId = regionId
-    }
+  () => [props.province, props.city],
+  ([province, city]) => {
+    if (!form.province) form.province = province || ''
+    if (!form.city) form.city = city || ''
   },
   { immediate: true },
 )
 
+watch(
+  () => props.address,
+  (address) => {
+    form.address = address || ''
+  },
+  { immediate: true },
+)
+
+// 草稿缓存：文本字段在误关弹窗后保留；坐标/地区/地址永远跟随地图选点（props），不参与草稿。
+const DRAFT_KEY = 'foodUpload'
+
+interface UploadDraft {
+  name: string
+  summary: string
+  ingredients: string
+  story: string
+  remark: string
+  image?: DraftImageMeta
+}
+
+const draft = readDraft<UploadDraft>(DRAFT_KEY)
+if (draft) {
+  form.name = draft.name
+  form.summary = draft.summary
+  form.ingredients = draft.ingredients
+  form.story = draft.story
+  form.remark = draft.remark
+  if (draft.image) {
+    imageMeta.value = draft.image
+    const cachedImage = getCachedDraftImage(DRAFT_KEY)
+    if (cachedImage) {
+      image.value = cachedImage
+      previewUrl.value = URL.createObjectURL(cachedImage)
+    }
+  }
+}
+
+function persistDraft() {
+  saveDraft(DRAFT_KEY, {
+    name: form.name,
+    summary: form.summary,
+    ingredients: form.ingredients,
+    story: form.story,
+    remark: form.remark,
+    image: imageMeta.value,
+  })
+}
+
+watch(
+  () => [form.name, form.summary, form.ingredients, form.story, form.remark, imageMeta.value],
+  persistDraft,
+)
+
+onBeforeUnmount(() => {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+})
+
 function selectImage(event: Event) {
   const input = event.target as HTMLInputElement
-  image.value = input.files?.[0]
+  const file = input.files?.[0]
+  // 重置 input 使同一文件可再次触发 change；取消选择时不覆盖已选图片。
+  input.value = ''
+  if (!file) return
+
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+  image.value = file
+  imageMeta.value = { name: file.name, type: file.type, size: file.size }
+  previewUrl.value = URL.createObjectURL(file)
+  cacheDraftImage(DRAFT_KEY, file)
 }
 
 async function submit() {
   error.value = ''
 
-  if (!form.regionId) {
-    error.value = t('upload.regionRequired')
+  // 坐标必须来自地图选点，禁止带着默认值直接创建。
+  if (form.latitude == null || form.longitude == null
+      || !Number.isFinite(form.latitude) || !Number.isFinite(form.longitude)) {
+    error.value = t('upload.coordinateRequired')
     return
   }
 
@@ -75,15 +166,19 @@ async function submit() {
       form.imageUrl = await uploadImage(image.value)
     }
 
-    const food = await createFood(form)
+    const food = await createFood({
+      ...form,
+      latitude: form.latitude as number,
+      longitude: form.longitude as number,
+    })
     if (food.reviewStatus === 'PENDING') {
       window.alert(t('upload.pendingSuccess'))
     }
+    clearDraft(DRAFT_KEY)
+    forgetDraftImage(DRAFT_KEY)
     emit('saved', food)
-  } catch (requestError) {
-    error.value = axios.isAxiosError(requestError) && requestError.response?.status === 429
-      ? t('upload.rateLimitError')
-      : t('upload.saveError')
+  } catch {
+    error.value = t('upload.saveError')
   } finally {
     saving.value = false
   }
@@ -108,13 +203,9 @@ async function submit() {
             <input v-model="form.name" required maxlength="100">
           </label>
           <label>
-            {{ t('upload.region') }}
-            <select v-model.number="form.regionId" required>
-              <option :value="0" disabled>{{ t('upload.selectRegion') }}</option>
-              <option v-for="region in regions" :key="region.id" :value="region.id">
-                {{ region.province }} · {{ region.name }}
-              </option>
-            </select>
+            {{ t('upload.cityLabel') }}
+            <input v-model.trim="form.province" maxlength="100" :placeholder="t('upload.provincePlaceholder')">
+            <input v-model.trim="form.city" maxlength="100" :placeholder="t('upload.cityPlaceholder')">
           </label>
           <label>
             {{ t('upload.latitude') }}
@@ -129,6 +220,11 @@ async function submit() {
         <p class="coordinate-tip">{{ t('upload.coordinateTip') }}</p>
 
         <label>
+          {{ t('upload.address') }}
+          <input v-model.trim="form.address" maxlength="500" :placeholder="t('upload.addressPlaceholder')">
+        </label>
+
+        <label>
           {{ t('upload.summary') }}
           <textarea v-model="form.summary" required maxlength="1000" rows="2"></textarea>
         </label>
@@ -141,10 +237,27 @@ async function submit() {
           <textarea v-model="form.story" required rows="4"></textarea>
         </label>
         <label>
-          {{ t('upload.cover') }}
-          <input type="file" accept="image/jpeg,image/png,image/webp" @change="selectImage">
-          <small>{{ t('upload.imageTip') }}</small>
+          {{ t('upload.remark') }}
+          <textarea v-model="form.remark" maxlength="1000" rows="3" :placeholder="t('upload.remarkPlaceholder')"></textarea>
         </label>
+        <div class="cover-field">
+          <span>{{ t('upload.cover') }}</span>
+          <div class="cover-row">
+            <input
+              ref="coverInput"
+              class="hidden-file-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              @change="selectImage"
+            >
+            <button type="button" class="cover-pick" @click="coverInput?.click()">
+              {{ image ? t('upload.changeCover') : t('upload.pickCover') }}
+            </button>
+          </div>
+          <img v-if="previewUrl" class="cover-preview" :src="previewUrl" :alt="t('upload.cover')">
+          <small v-if="imageMeta && !image" class="cover-warning">{{ t('upload.imageNeedsReselect') }}</small>
+          <small>{{ t('upload.imageTip') }}</small>
+        </div>
 
         <p v-if="error" class="form-error">{{ error }}</p>
 
@@ -158,5 +271,6 @@ async function submit() {
         </div>
       </form>
     </section>
+
   </div>
 </template>

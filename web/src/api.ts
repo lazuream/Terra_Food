@@ -1,18 +1,41 @@
 import axios from 'axios'
 
+import type { AgentChatPayload, AgentChatResponse, FoodFootprint } from './types'
+
 import type {
+  Achievement,
+  ProfileStats,
   AuthUser,
+  CaptchaChallenge,
   Food,
+  EtchingDesign,
+  EtchingDesignPayload,
+  FoodComment,
+  FoodCommentCreatePayload,
   FoodCreatePayload,
+  FoodLikeStatus,
+  FavoriteStatus,
+  FoodUpdatePayload,
   FoodImportResult,
+  FoodMarker,
   FoodReviewPayload,
   MapBounds,
+  PagedCatalog,
   PagedFoods,
   LoginPayload,
+  PasswordResetPayload,
   SetUserActivePayload,
+  SetUserRolePayload,
   Region,
   PagedAuthUsers,
   RegisterPayload,
+  SendRegistrationCodePayload,
+  SendPasswordResetCodePayload,
+  UserPublic,
+  ReviewItemPayload,
+  WishlistItem,
+  WishlistItemCreatePayload,
+  WishlistStatus,
 } from './types'
 
 interface FoodQuery extends Partial<MapBounds> {
@@ -26,8 +49,48 @@ const api = axios.create({
   withCredentials: true,
 })
 
+// 由 main.ts 注册的会话失效回调：统一清空登录态并跳转登录页，
+// 保持 api.ts 与 auth/router 解耦，避免循环依赖。
+let onUnauthorized: (() => void) | undefined
+
+export function registerUnauthorizedHandler(handler: () => void): void {
+  onUnauthorized = handler
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      const requestUrl = error.config?.url ?? ''
+      // /auth/me 的 401 由 restoreSession 自行处理（静默）；登录失败 401 由登录表单展示，
+      // 其余业务请求的 401 才触发统一登出跳转。
+      if (!requestUrl.includes('/auth/me') && !requestUrl.includes('/auth/login')) {
+        onUnauthorized?.()
+      }
+    }
+    return Promise.reject(error)
+  },
+)
+
 export async function getFoods(params?: FoodQuery): Promise<Food[]> {
   const response = await api.get<Food[]>('/foods', { params })
+  return response.data
+}
+
+/** 地图标记（轻量接口，只含弹窗所需字段），驱动 Leaflet 标记层。 */
+export async function getFoodMarkers(params?: FoodQuery): Promise<FoodMarker[]> {
+  const response = await api.get<FoodMarker[]>('/foods/markers', { params })
+  return response.data
+}
+
+/** 目录分页：keyword/regionId 过滤 + page/pageSize，与地图 bounds 解耦。 */
+export async function getFoodCatalog(params: {
+  keyword?: string
+  regionId?: number
+  page: number
+  pageSize: number
+}): Promise<PagedCatalog> {
+  const response = await api.get<PagedCatalog>('/foods/catalog', { params })
   return response.data
 }
 
@@ -36,8 +99,42 @@ export async function getFood(id: number): Promise<Food> {
   return response.data
 }
 
+export async function getUserPublic(id: number): Promise<UserPublic> {
+  const response = await api.get<UserPublic>(`/users/${id}`)
+  return response.data
+}
+
+export async function getFoodLikeStatus(id: number): Promise<FoodLikeStatus> {
+  const response = await api.get<FoodLikeStatus>(`/foods/${id}/like/status`)
+  return response.data
+}
+
+export async function likeFood(id: number): Promise<FoodLikeStatus> {
+  const response = await api.post<FoodLikeStatus>(`/foods/${id}/like`)
+  return response.data
+}
+
+export async function unlikeFood(id: number): Promise<FoodLikeStatus> {
+  const response = await api.post<FoodLikeStatus>(`/foods/${id}/like/unlike`)
+  return response.data
+}
+
+export async function getFoodComments(foodId: number): Promise<FoodComment[]> {
+  const response = await api.get<FoodComment[]>('/foods/' + foodId + '/comments')
+  return response.data
+}
+
+export async function createFoodComment(
+  foodId: number,
+  payload: FoodCommentCreatePayload,
+): Promise<FoodComment> {
+  const response = await api.post<FoodComment>('/foods/' + foodId + '/comments', payload)
+  return response.data
+}
+
 export async function getRegions(): Promise<Region[]> {
   const response = await api.get<Region[]>('/regions')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
   return response.data
 }
 
@@ -51,6 +148,7 @@ interface TiandituGeocoderResult {
   status?: string | number
   msg?: string
   result?: {
+    formatted_address?: string
     addressComponent?: TiandituAddressComponent
   }
 }
@@ -63,6 +161,8 @@ interface PhotonProperties {
   district?: string
   locality?: string
   name?: string
+  street?: string
+  housenumber?: string
 }
 
 interface PhotonResult {
@@ -83,23 +183,24 @@ interface NominatimAddress {
 }
 
 interface NominatimResult {
+  display_name?: string
   address?: NominatimAddress
 }
 
-interface MapLocation {
+export interface MapLocation {
   province: string
   city: string
+  address: string
 }
 
 const mapRegionCache = new Map<string, MapLocation>()
 const tiandituKey = import.meta.env.VITE_TIANDITU_KEY?.trim()
-
-export async function resolveMapRegion(
+export async function reverseMapLocation(
   latitude: number,
   longitude: number,
   signal?: AbortSignal,
-): Promise<Region> {
-  const key = `${latitude.toFixed(4)},${longitude.toFixed(4)}`
+): Promise<MapLocation> {
+  const key = latitude.toFixed(4) + ',' + longitude.toFixed(4)
   let location = mapRegionCache.get(key)
   if (!location) {
     try {
@@ -110,16 +211,28 @@ export async function resolveMapRegion(
         location = await reverseWithPhoton(latitude, longitude, signal)
       } catch (fallbackError) {
         if (signal?.aborted) throw fallbackError
-        location = await reverseWithNominatim(latitude, longitude, signal)
+        try {
+          location = await reverseWithNominatim(latitude, longitude, signal)
+        } catch (lastError) {
+          if (signal?.aborted) throw lastError
+          throw lastError
+        }
       }
     }
     mapRegionCache.set(key, location)
   }
 
-  const response = await api.post<Region>('/regions/resolve', location, { signal })
-  return response.data
+  return location
 }
 
+export async function ensureMapRegion(
+  province: string,
+  city: string,
+  signal?: AbortSignal,
+): Promise<Region> {
+  const response = await api.post<Region>('/regions/resolve', { province, city }, { signal })
+  return response.data
+}
 async function reverseWithTianditu(
   latitude: number,
   longitude: number,
@@ -147,7 +260,7 @@ async function reverseWithTianditu(
     province: address?.province,
     city: address?.city,
     county: address?.county,
-  })
+  }, response.data.result?.formatted_address)
 }
 
 async function reverseWithPhoton(
@@ -169,7 +282,13 @@ async function reverseWithPhoton(
     district: properties?.district,
     locality: properties?.locality,
     name: properties?.name,
-  })
+  }, formatAddress([
+    properties?.state || properties?.province,
+    properties?.city,
+    properties?.district || properties?.county,
+    properties?.street,
+    properties?.housenumber || properties?.name,
+  ]))
 }
 
 async function reverseWithNominatim(
@@ -196,7 +315,7 @@ async function reverseWithNominatim(
     county: address?.county || address?.city_district,
     district: address?.district,
     locality: address?.village,
-  })
+  }, response.data.display_name)
 }
 
 function extractMapLocation(value: {
@@ -206,18 +325,27 @@ function extractMapLocation(value: {
   district?: string
   locality?: string
   name?: string
-}): MapLocation {
+}, address = ''): MapLocation {
   const province = normalizeProvince(value.province || '')
   const municipality = ['北京', '上海', '天津', '重庆', '香港', '澳门'].includes(province)
   const city = normalizeCity(
     municipality
-      ? value.county || value.district || value.city || value.locality || value.name || ''
+      ? province
       : value.city || value.county || value.district || value.locality || value.name || '',
   )
   if (!province || !city) {
     throw new Error('Reverse geocoding response does not contain an administrative region')
   }
-  return { province, city }
+  return {
+    province,
+    city,
+    address: address.trim() || formatAddress([value.province, value.city, value.district, value.name]),
+  }
+}
+
+function formatAddress(parts: Array<string | undefined>): string {
+  return [...new Set(parts.map((part) => part?.trim()).filter(Boolean))]
+    .join(' · ')
 }
 
 function normalizeProvince(value: string): string {
@@ -247,6 +375,33 @@ export async function createFood(payload: FoodCreatePayload): Promise<Food> {
   return response.data
 }
 
+export async function getMyProfileStats(): Promise<ProfileStats> {
+  const response = await api.get<ProfileStats>('/profile/stats')
+  return response.data
+}
+
+export async function getMyFoods(): Promise<Food[]> {
+  const response = await api.get<Food[]>('/profile/foods')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
+  return response.data
+}
+
+export async function getMyFootprints(limit = 20): Promise<FoodFootprint[]> {
+  const response = await api.get<FoodFootprint[]>('/profile/footprints', { params: { limit } })
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
+  return response.data
+}
+
+export async function chatWithAgent(payload: AgentChatPayload): Promise<AgentChatResponse> {
+  const response = await api.post<AgentChatResponse>('/agent/chat', payload, { timeout: 60_000 })
+  return response.data
+}
+
+export async function updateMyFood(id: number, payload: FoodUpdatePayload): Promise<Food> {
+  const response = await api.patch<Food>(`/profile/foods/${id}`, payload)
+  return response.data
+}
+
 export async function uploadImage(file: File): Promise<string> {
   const formData = new FormData()
   formData.append('file', file)
@@ -264,8 +419,59 @@ export async function importFoodSpreadsheet(file: File): Promise<FoodImportResul
 }
 
 export async function login(payload: LoginPayload): Promise<AuthUser> {
-  const response = await api.post<AuthUser>('/auth/login', payload)
+  // 登录响应会等待用户信息与地图菜品完成 Redis 预热；首次冷缓存可能超过全局 8 秒。
+  const response = await api.post<AuthUser>('/auth/login', payload, { timeout: 60_000 })
   return response.data
+}
+
+export async function getMyFavorites(): Promise<Food[]> {
+  const response = await api.get<Food[]>('/profile/favorites')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
+  return response.data
+}
+
+export async function getFavoriteStatus(foodId: number): Promise<FavoriteStatus> {
+  const response = await api.get<FavoriteStatus>('/profile/favorites/' + foodId + '/status')
+  if (!response.data || typeof response.data.favorited !== 'boolean') {
+    throw new Error('Invalid favorite response')
+  }
+  return response.data
+}
+
+export async function addFavorite(foodId: number): Promise<FavoriteStatus> {
+  const response = await api.post<FavoriteStatus>('/profile/favorites/' + foodId)
+  if (!response.data || typeof response.data.favorited !== 'boolean') {
+    throw new Error('Invalid favorite response')
+  }
+  return response.data
+}
+
+export async function removeFavorite(foodId: number): Promise<FavoriteStatus> {
+  const response = await api.delete<FavoriteStatus>('/profile/favorites/' + foodId)
+  if (!response.data || typeof response.data.favorited !== 'boolean') {
+    throw new Error('Invalid favorite response')
+  }
+  return response.data
+}
+
+export async function getMyWishlist(): Promise<WishlistItem[]> {
+  const response = await api.get<WishlistItem[]>('/profile/wishlist')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
+  return response.data
+}
+
+export async function getWishlistStatus(foodId: number): Promise<WishlistStatus> {
+  const response = await api.get<WishlistStatus>('/profile/wishlist/foods/' + foodId + '/status')
+  return response.data
+}
+
+export async function addWishlistItem(payload: WishlistItemCreatePayload): Promise<WishlistItem> {
+  const response = await api.post<WishlistItem>('/profile/wishlist', payload)
+  return response.data
+}
+
+export async function deleteWishlistItem(id: number): Promise<void> {
+  await api.delete('/profile/wishlist/' + id)
 }
 
 export async function register(payload: RegisterPayload): Promise<AuthUser> {
@@ -273,11 +479,94 @@ export async function register(payload: RegisterPayload): Promise<AuthUser> {
   return response.data
 }
 
+export async function getCaptcha(): Promise<CaptchaChallenge> {
+  const response = await api.get<CaptchaChallenge>('/auth/captcha')
+  return response.data
+}
+
+export async function sendRegistrationCode(payload: SendRegistrationCodePayload): Promise<void> {
+  // SMTP 投递可能超过全局 8 秒超时；邮件实际发出后再被前端误报失败会诱导用户重复发送。
+  await api.post('/auth/registration-code', payload, { timeout: 30_000 })
+}
+
+export async function sendPasswordResetCode(payload: SendPasswordResetCodePayload): Promise<void> {
+  await api.post('/auth/password-reset-code', payload, { timeout: 30_000 })
+}
+
+export async function resetPassword(payload: PasswordResetPayload): Promise<void> {
+  await api.post('/auth/password-reset', payload)
+}
 export async function getCurrentUser(): Promise<AuthUser> {
   const response = await api.get<AuthUser>('/auth/me')
   return response.data
 }
 
+export async function updateAvatar(avatarUrl: string): Promise<AuthUser> {
+  const response = await api.patch<AuthUser>('/profile/avatar', { avatarUrl })
+  return response.data
+}
+
+export async function updateMySignature(signature: string): Promise<AuthUser> {
+  const response = await api.patch<AuthUser>('/profile/signature', { signature })
+  return response.data
+}
+
+export async function updateMyDisplayName(displayName: string): Promise<AuthUser> {
+  const response = await api.patch<AuthUser>('/profile/display-name', { displayName })
+  return response.data
+}
+
+export async function reviewUserItem(
+  id: number,
+  payload: ReviewItemPayload,
+): Promise<void> {
+  await api.patch(`/admin/users/${id}/review`, payload)
+}
+
+export async function getAchievements(): Promise<Achievement[]> {
+  const response = await api.get<Achievement[]>('/achievements/me')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
+  return response.data
+}
+
+export async function getAchievementNotifications(): Promise<Achievement[]> {
+  const response = await api.get<Achievement[]>('/achievements/notifications')
+  return response.data
+}
+
+export async function markAchievementNotificationRead(achievementId: number): Promise<void> {
+  await api.post('/achievements/' + achievementId + '/notification-read')
+}
+
+export async function selectAchievement(achievementId: number): Promise<Achievement> {
+  const response = await api.put<Achievement>('/achievements/selection', { achievementId })
+  return response.data
+}
+
+export async function getMyEtchings(): Promise<EtchingDesign[]> {
+  const response = await api.get<EtchingDesign[]>('/etchings/me')
+  if (!Array.isArray(response.data)) throw new Error('Invalid list response')
+  return response.data
+}
+export async function createEtching(payload: EtchingDesignPayload): Promise<EtchingDesign> {
+  const response = await api.post<EtchingDesign>('/etchings', payload)
+  if (!response.data || !Number.isSafeInteger(response.data.id) || !Array.isArray(response.data.layerOne)) {
+    throw new Error('Invalid etching response')
+  }
+  return response.data
+}
+export async function updateEtching(id: number, payload: EtchingDesignPayload): Promise<EtchingDesign> {
+  const response = await api.put<EtchingDesign>(`/etchings/${id}`, payload)
+  if (!response.data || !Number.isSafeInteger(response.data.id) || !Array.isArray(response.data.layerOne)) {
+    throw new Error('Invalid etching response')
+  }
+  return response.data
+}
+export async function deleteEtching(id: number): Promise<void> { await api.delete(`/etchings/${id}`) }
+export async function selectEtching(id: number): Promise<EtchingDesign> {
+  const response = await api.put<EtchingDesign>(`/etchings/${id}/selection`)
+  return response.data
+}
 export async function logout(): Promise<void> {
   await api.post('/auth/logout')
 }
@@ -310,6 +599,10 @@ export async function getUsers(page = 1, pageSize = 10): Promise<PagedAuthUsers>
 
 export async function setUserActive(id: number, payload: SetUserActivePayload): Promise<void> {
   await api.patch(`/admin/users/${id}/active`, payload)
+}
+
+export async function setUserRole(id: number, payload: SetUserRolePayload): Promise<void> {
+  await api.patch(`/admin/users/${id}/role`, payload)
 }
 
 export async function deleteUser(id: number): Promise<void> {

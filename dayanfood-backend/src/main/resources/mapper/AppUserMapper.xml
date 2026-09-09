@@ -9,20 +9,39 @@
         <result property="username" column="username"/>
         <result property="password" column="password"/>
         <result property="displayName" column="display_name"/>
+        <result property="email" column="email"/>
+        <result property="avatarUrl" column="avatar_url"/>
+        <result property="signature" column="signature"/>
+        <result property="signaturePending" column="signature_pending"/>
+        <result property="signatureStatus" column="signature_status" javaType="com.dayan.food.entity.enums.SignatureStatus"/>
         <result property="role" column="role" javaType="com.dayan.food.entity.enums.UserRole"/>
         <result property="active" column="active"/>
         <result property="lastFoodUploadAt" column="last_food_upload_at"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
+    <sql id="userColumns">
+        id, username, password, display_name, email, avatar_url, signature, signature_pending,
+        signature_status, role, active, last_food_upload_at, created_at
+    </sql>
+
     <select id="findByUsername" resultMap="appUserResultMap">
-        SELECT id, username, password, display_name, role, active, last_food_upload_at, created_at
+        SELECT <include refid="userColumns"/>
         FROM app_user
         WHERE username = #{username}
     </select>
 
+    <select id="findByUsernameOrEmail" resultMap="appUserResultMap">
+        SELECT <include refid="userColumns"/>
+        FROM app_user
+        WHERE username = #{identity}
+           OR email = #{identity}
+        ORDER BY CASE WHEN username = #{identity} THEN 0 ELSE 1 END
+        LIMIT 1
+    </select>
+
     <select id="findByUsernameOrDisplayName" resultMap="appUserResultMap">
-        SELECT id, username, password, display_name, role, active, last_food_upload_at, created_at
+        SELECT <include refid="userColumns"/>
         FROM app_user
         WHERE username = #{identity}
            OR display_name = #{identity}
@@ -36,14 +55,27 @@
         WHERE username = #{username}
     </select>
 
+    <select id="countByEmail" resultType="int">
+        SELECT COUNT(*)
+        FROM app_user
+        WHERE email = #{email}
+    </select>
+
     <select id="findById" resultMap="appUserResultMap">
-        SELECT id, username, password, display_name, role, active, last_food_upload_at, created_at
+        SELECT <include refid="userColumns"/>
+        FROM app_user
+        WHERE id = #{id}
+    </select>
+
+    <!-- 公开页读侧：userColumns 之外的敏感列（如 password）不进入查询与内存。 -->
+    <select id="findPublicById" resultMap="appUserResultMap">
+        SELECT id, username, display_name, avatar_url, signature, active
         FROM app_user
         WHERE id = #{id}
     </select>
 
     <select id="findPage" resultMap="appUserResultMap">
-        SELECT id, username, password, display_name, role, active, last_food_upload_at, created_at
+        SELECT <include refid="userColumns"/>
         FROM app_user
         ORDER BY created_at DESC, id DESC
         LIMIT #{pageSize} OFFSET #{offset}
@@ -54,34 +86,61 @@
         FROM app_user
     </select>
 
+    <select id="countByAvatarUrl" resultType="int">
+        SELECT COUNT(*)
+        FROM app_user
+        WHERE avatar_url = #{avatarUrl}
+    </select>
+
+    <update id="updateAvatar">
+        UPDATE app_user
+        SET avatar_url = #{avatarUrl}
+        WHERE username = #{username}
+          AND active = TRUE
+    </update>
+
+    <update id="updateSignature">
+        UPDATE app_user
+        SET signature = #{signature}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateDisplayName">
+        UPDATE app_user
+        SET display_name = #{displayName}
+        WHERE id = #{id}
+    </update>
+
     <update id="updateActive">
         UPDATE app_user
         SET active = #{active}
         WHERE id = #{id}
     </update>
 
+    <update id="updateRole">
+        UPDATE app_user
+        SET role = #{role}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updatePassword">
+        UPDATE app_user
+        SET password = #{password}
+        WHERE username = #{username}
+          AND LOWER(email) = #{email}
+          AND active = TRUE
+    </update>
     <delete id="deleteById">
         DELETE FROM app_user
         WHERE id = #{id}
     </delete>
 
-    <update id="claimFoodUpload">
-        UPDATE app_user
-        SET last_food_upload_at = CURRENT_TIMESTAMP
-        WHERE username = #{username}
-          AND active = TRUE
-          AND (
-              last_food_upload_at IS NULL
-              OR last_food_upload_at &lt;= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 3 DAY)
-          )
-    </update>
-
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO app_user (
-            username, password, display_name, role, active, last_food_upload_at, created_at
+            username, password, display_name, email, role, active, last_food_upload_at, created_at
         )
         VALUES (
-            #{username}, #{password}, #{displayName}, #{role}, #{active},
+            #{username}, #{password}, #{displayName}, #{email}, #{role}, #{active},
             #{lastFoodUploadAt}, #{createdAt}
         )
     </insert>

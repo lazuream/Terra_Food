@@ -2,7 +2,9 @@ package com.dayan.food.controller;
 
 import com.dayan.food.entity.dto.FoodCreateDTO;
 import com.dayan.food.entity.vo.FoodVO;
+import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.entity.vo.FoodImportResultVO;
+import com.dayan.food.entity.vo.FoodMarkerVO;
 import com.dayan.food.service.FoodImportService;
 import com.dayan.food.service.FoodService;
 import jakarta.validation.Valid;
@@ -53,27 +55,48 @@ public class FoodController {
         );
     }
 
+    @GetMapping("/markers")
+    public List<FoodMarkerVO> markers(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long regionId,
+            @RequestParam(required = false) BigDecimal minLatitude,
+            @RequestParam(required = false) BigDecimal maxLatitude,
+            @RequestParam(required = false) BigDecimal minLongitude,
+            @RequestParam(required = false) BigDecimal maxLongitude
+    ) {
+        return foodService.markers(
+                keyword,
+                regionId,
+                minLatitude,
+                maxLatitude,
+                minLongitude,
+                maxLongitude
+        );
+    }
+
+    @GetMapping("/catalog")
+    public FoodCatalogVO catalog(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long regionId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "30") int pageSize
+    ) {
+        return foodService.catalog(keyword, regionId, page, pageSize);
+    }
+
     @GetMapping("/{id}")
     public FoodVO detail(@PathVariable Long id, Authentication authentication) {
-        foodService.recordVisit(id, authentication == null ? null : authentication.getName());
+        // 游客浏览（匿名 token 的 isAuthenticated 为 false）不计入热度与每日访问。
+        if (authentication != null && authentication.isAuthenticated()) {
+            foodService.recordVisit(id, authentication.getName());
+        }
         return foodService.detail(id);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public FoodVO create(@Valid @RequestBody FoodCreateDTO request, Authentication authentication) {
-        return foodService.create(
-                request.name(),
-                request.regionId(),
-                request.latitude(),
-                request.longitude(),
-                request.address(),
-                request.summary(),
-                request.story(),
-                request.ingredients(),
-                request.imageUrl(),
-                authentication == null ? "无名" : authentication.getName()
-        );
+        return foodService.create(request, authentication == null ? "无名" : authentication.getName());
     }
 
     @PostMapping("/import")

@@ -67,6 +67,16 @@ function getNextIndex() {
   return nextIndex
 }
 function handleNext() { if (musicList.value.length) playSong(getNextIndex()) }
+function handleAgentMusicSwitch(event: Event) {
+  const query = (event as CustomEvent<{ query?: string }>).detail?.query?.trim().toLowerCase()
+  if (!query) return
+  const index = musicList.value.findIndex((track) =>
+    track.name.toLowerCase().includes(query)
+      || track.artist.toLowerCase().includes(query)
+      || query.includes(track.name.toLowerCase()),
+  )
+  if (index >= 0) playSong(index)
+}
 function updateProgress(e: Event) { currentTime.value = (e.target as HTMLAudioElement).currentTime }
 function updateDuration(e: Event) { duration.value = (e.target as HTMLAudioElement).duration }
 function seekAudio(e: MouseEvent) { if (!bgMusic.value || !duration.value) return; const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); bgMusic.value.currentTime = (e.clientX - r.left) / r.width * duration.value }
@@ -77,30 +87,11 @@ function minimizePlayer() { isPlayerVisible.value = false; showPlaylist.value = 
 function openPlayer() { isPlayerVisible.value = true }
 function setPlayMode(mode: PlayMode) { playMode.value = mode; localStorage.setItem('background-music-play-mode', mode) }
 function outside(e: MouseEvent) { if (isPlayerVisible.value && playerRef.value && !playerRef.value.contains(e.target as Node)) { isPlayerVisible.value = false; showPlaylist.value = false } }
-function startDrag(event: PointerEvent) { if (!playerRef.value) return; const rect = playerRef.value.getBoundingClientRect(); dragOffset.value = { x: event.clientX - rect.left, y: event.clientY - rect.top }; dragStart.value = { x: event.clientX, y: event.clientY }; dragging.value = false; dragMoved.value = false; window.addEventListener('pointermove', moveDrag); window.addEventListener('pointerup', stopDrag, { once: true }) }
-function moveDrag(event: PointerEvent) { if (!playerRef.value) return; const distance = Math.hypot(event.clientX - dragStart.value.x, event.clientY - dragStart.value.y); if (!dragging.value && distance < 4) return; if (!dragging.value) { dragging.value = true; dragMoved.value = true; suppressClick.value = true }; const rect = playerRef.value.getBoundingClientRect(); draggedPosition.value = { left: Math.max(8, Math.min(window.innerWidth - rect.width - 8, event.clientX - dragOffset.value.x)), top: Math.max(8, Math.min(window.innerHeight - rect.height - 8, event.clientY - dragOffset.value.y)) }; event.preventDefault() }
-function stopDrag() { if (!dragMoved.value) suppressClick.value = false; dragging.value = false; dragMoved.value = false; window.removeEventListener('pointermove', moveDrag) }
-function suppressDraggedClick(event: MouseEvent) { if (!suppressClick.value) return; event.preventDefault(); event.stopPropagation(); suppressClick.value = false }
-async function keepPlayerInBounds() {
-  await nextTick()
-  if (!playerRef.value) return
-  const rect = playerRef.value.getBoundingClientRect()
-  const left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, rect.left))
-  const top = Math.max(8, Math.min(window.innerHeight - rect.height - 8, rect.top))
-  if (Math.abs(left - rect.left) > 1 || Math.abs(top - rect.top) > 1) draggedPosition.value = { left, top }
-}
-// Route changes (especially entering the registration page) always start with the
-// compact launcher so the form's navigation actions remain reachable. Audio state
-// is kept in the persistent component and continues playing in the background.
-watch(() => route.fullPath, () => minimizePlayer())
-watch(isPlayerVisible, visible => { if (visible) keepPlayerInBounds() })
-onMounted(async () => { const savedMode = localStorage.getItem('background-music-play-mode'); if (savedMode === 'list' || savedMode === 'random') playMode.value = savedMode; try { musicList.value = await (await fetch('/audio/music-manifest.json')).json(); await playCurrent() } catch { musicList.value = [] }; window.addEventListener('pointerdown', playCurrent, { once: true }); document.addEventListener('click', outside) })
-onMounted(() => window.addEventListener('resize', keepPlayerInBounds))
-onBeforeUnmount(() => { window.removeEventListener('pointerdown', playCurrent); window.removeEventListener('pointermove', moveDrag); window.removeEventListener('resize', keepPlayerInBounds); document.removeEventListener('click', outside) })
+onMounted(async () => { if (window.matchMedia('(max-width: 600px), (max-height: 500px)').matches) isPlayerVisible.value = false; const savedMode = localStorage.getItem('background-music-play-mode'); if (savedMode === 'list' || savedMode === 'random') playMode.value = savedMode; try { musicList.value = await (await fetch('/audio/music-manifest.json')).json(); await playCurrent() } catch { musicList.value = [] }; window.addEventListener('pointerdown', playCurrent, { once: true }); window.addEventListener('agent:music-switch', handleAgentMusicSwitch); document.addEventListener('click', outside) })
+onBeforeUnmount(() => { window.removeEventListener('pointerdown', playCurrent); window.removeEventListener('agent:music-switch', handleAgentMusicSwitch); document.removeEventListener('click', outside) })
 </script>
 
 <style scoped>
-#MusicControl{position:fixed;right:clamp(14px,3vw,28px);bottom:clamp(14px,3vw,28px);z-index:1000;font-family:inherit}.control-bar{position:relative;display:flex;gap:12px;background:rgba(255,255,255,.68);border:1px solid rgba(255,255,255,.72);border-radius:24px;box-shadow:0 14px 40px rgba(31,41,55,.22),inset 0 1px rgba(255,255,255,.8);backdrop-filter:blur(18px) saturate(145%);-webkit-backdrop-filter:blur(18px) saturate(145%);padding:18px 14px 14px}.minimize-btn{position:absolute;right:10px;top:7px;border:1px solid rgba(71,85,105,.16);background:rgba(255,255,255,.42);color:#52606d;cursor:pointer;width:24px;height:24px;padding:0;border-radius:50%;font-size:19px;line-height:18px}.reopen-btn{border:1px solid rgba(255,255,255,.78);background:rgba(255,255,255,.52);color:#334155;cursor:pointer;padding:10px 14px;border-radius:50%;font-size:20px;box-shadow:0 8px 24px rgba(31,41,55,.2);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}.reopen-btn:hover,.minimize-btn:hover{background:rgba(255,255,255,.82)}.player-content{width:min(320px,calc(100vw - 64px))}.toggle-btn,button{border:0;background:none;cursor:pointer;padding:8px;border-radius:8px}.song-info{text-align:center}.title{font-size:1.1rem;font-weight:600}.artist,.time-display{font-size:.85rem;color:#718096}.progress-container{height:7px;margin:14px 0 24px;background:rgba(100,116,139,.22);border-radius:4px;cursor:pointer;position:relative}.progress-bar{height:100%;background:#4299e1;border-radius:4px}.time-display{position:absolute;top:10px;width:100%;text-align:center}.main-controls{display:flex;align-items:center;justify-content:center;gap:4px}.play-btn{font-size:20px;font-weight:700}.main-controls input{width:70px}.play-mode{display:flex;width:max-content;margin:8px auto 0;padding:2px;background:rgba(226,232,240,.7);border-radius:6px}.play-mode button{padding:4px 10px;color:#52606d;font-size:.8rem}.play-mode button.active{background:rgba(255,255,255,.8);color:#1f2937;box-shadow:0 1px 3px rgba(15,23,42,.12)}.playlist{max-height:150px;overflow:auto;margin-top:10px}.song-item{display:flex;width:100%;justify-content:space-between;text-align:left}.song-item.playing{background:rgba(230,244,255,.78)}.song-item small{color:#718096;margin-left:8px}
-@media (max-width:520px){#MusicControl{right:12px;bottom:12px}.control-bar{padding-left:10px;padding-right:10px}.player-content{width:calc(100vw - 52px)}}
-#MusicControl{touch-action:none;cursor:grab}#MusicControl:active{cursor:grabbing}
+#MusicControl{position:fixed;right:20px;bottom:20px;z-index:1000}.control-bar{display:flex;gap:12px;background:rgba(255,255,255,.96);border-radius:24px;box-shadow:0 8px 32px #0002;padding:14px}.reopen-btn{border:0;background:rgba(255,255,255,.96);cursor:pointer;padding:10px 14px;border-radius:50%;font-size:20px;box-shadow:0 4px 16px #0003}.player-content{width:320px}.toggle-btn,button{border:0;background:none;cursor:pointer;padding:8px;border-radius:8px}.song-info{text-align:center}.title{font-size:1.1rem;font-weight:600}.artist,.time-display{font-size:.85rem;color:#718096}.progress-container{height:7px;margin:14px 0 24px;background:#ddd;border-radius:4px;cursor:pointer;position:relative}.progress-bar{height:100%;background:#4299e1;border-radius:4px}.time-display{position:absolute;top:10px;width:100%;text-align:center}.main-controls{display:flex;align-items:center;justify-content:center;gap:4px}.play-btn{font-size:20px;font-weight:700}.main-controls input{width:70px}.play-mode{display:flex;width:max-content;margin:8px auto 0;padding:2px;background:#edf2f7;border-radius:6px}.play-mode button{padding:4px 10px;color:#52606d;font-size:.8rem}.play-mode button.active{background:#fff;color:#1f2937;box-shadow:0 1px 3px #0002}.playlist{max-height:150px;overflow:auto;margin-top:10px}.song-item{display:flex;width:100%;justify-content:space-between;text-align:left}.song-item.playing{background:#e6f4ff}.song-item small{color:#718096;margin-left:8px}
+@media (max-width:600px),(max-height:500px){#MusicControl{right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom))}.reopen-btn{width:48px;height:48px;padding:0}.control-bar{max-width:calc(100vw - 20px);max-height:min(54dvh,430px);padding:10px;overflow-y:auto;border-radius:18px}.player-content{width:min(320px,calc(100vw - 42px))}.song-info{padding:0 34px}.title{overflow:hidden;font-size:1rem;text-overflow:ellipsis;white-space:nowrap}.artist{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.main-controls{flex-wrap:wrap}.main-controls input{width:58px}.play-mode{max-width:100%}.playlist{max-height:24dvh}}
 </style>

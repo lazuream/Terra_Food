@@ -5,6 +5,13 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env.local
+.env
+application-local.yml
 uploads/
 .m2/
 *.log
+__pycache__/
+*.py[cod]
+
+# Mimosa 安全扫描台账（本地审计工件，不入库）
+.mimosa/
