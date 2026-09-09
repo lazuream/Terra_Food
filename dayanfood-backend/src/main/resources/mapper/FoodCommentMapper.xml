@@ -9,6 +9,8 @@
         <result property="foodId" column="food_id"/>
         <result property="content" column="content"/>
         <result property="createdAt" column="created_at"/>
+        <result property="checkinId" column="checkin_id"/>
+        <result property="eatenOn" column="eaten_on"/>
         <association property="author" javaType="com.dayan.food.entity.po.AppUser">
             <id property="id" column="author_id"/>
             <result property="username" column="author_username"/>
@@ -22,12 +24,15 @@
                c.food_id,
                c.content,
                c.created_at,
+               ci.id AS checkin_id,
+               ci.eaten_on,
                u.id AS author_id,
                u.username AS author_username,
                u.display_name AS author_display_name,
                u.avatar_url AS author_avatar_url
         FROM food_comment c
         INNER JOIN app_user u ON u.id = c.user_id
+        LEFT JOIN food_checkin ci ON ci.comment_id = c.id AND ci.visibility = 'PUBLIC'
         WHERE c.food_id = #{foodId}
         ORDER BY c.created_at DESC, c.id DESC
     </select>
@@ -36,4 +41,6 @@
         INSERT INTO food_comment (food_id, user_id, content, created_at)
         VALUES (#{foodId}, #{author.id}, #{content}, #{createdAt})
     </insert>
+    <update id="updateOwned">UPDATE food_comment SET content=#{content} WHERE id=#{id} AND user_id=#{userId}</update>
+    <delete id="deleteOwned">DELETE FROM food_comment WHERE id=#{id} AND user_id=#{userId}</delete>
 </mapper>

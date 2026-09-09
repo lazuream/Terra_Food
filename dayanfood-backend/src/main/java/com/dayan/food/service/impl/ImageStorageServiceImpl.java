@@ -2,6 +2,7 @@ package com.dayan.food.service.impl;
 
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.service.ImageStorageService;
+import com.dayan.food.service.UploadTooLargeException;
 import com.dayan.food.mapper.FoodMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -77,7 +78,7 @@ public class ImageStorageServiceImpl implements ImageStorageService {
             throw new IllegalArgumentException("上传图片不能为空");
         }
         if (file.getSize() > maxImageBytes) {
-            throw new IllegalArgumentException("上传图片不能超过 5MB");
+            throw new UploadTooLargeException("上传图片不能超过 5MB");
         }
 
         String extension = getExtension(file.getOriginalFilename());

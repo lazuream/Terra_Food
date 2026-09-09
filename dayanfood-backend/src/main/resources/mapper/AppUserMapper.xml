@@ -67,6 +67,13 @@
         WHERE id = #{id}
     </select>
 
+    <select id="findByUsernameForUpdate" resultMap="appUserResultMap">
+        SELECT <include refid="userColumns"/>
+        FROM app_user
+        WHERE username = #{username}
+        FOR UPDATE
+    </select>
+
     <!-- 公开页读侧：userColumns 之外的敏感列（如 password）不进入查询与内存。 -->
     <select id="findPublicById" resultMap="appUserResultMap">
         SELECT id, username, display_name, avatar_url, signature, active

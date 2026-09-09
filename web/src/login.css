@@ -592,6 +592,23 @@
 .auth-mode-tabs { display:flex; gap:8px; margin-bottom:18px; }
 .auth-mode-tabs a { padding:6px 14px; border-bottom:2px solid transparent; color:var(--color-accent-label); }
 .auth-mode-tabs a.active { border-bottom-color:var(--color-accent); color:var(--color-ink); }
+.auth-page { min-height: calc(100dvh - 82px); }
+.auth-card { justify-content: center; overflow:auto; }
+.auth-field-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.register-compact-form { gap:10px; }
+.register-compact-form .login-heading { margin-bottom:4px; }
+@media (max-width: 700px) { .auth-field-grid { grid-template-columns:1fr; } .auth-page { min-height:auto; } }
+
+@media (min-width: 701px) and (min-height: 700px) {
+  .login-panel.auth-card { justify-content: flex-start; padding-block: 16px; }
+  .auth-mode-tabs { margin-bottom: 6px; }
+  .register-compact-form { gap: 5px; }
+  .register-compact-form .login-heading h2 { margin: 3px 0 4px; font-size: 28px; }
+  .register-compact-form label { gap: 4px; }
+  .register-compact-form input { padding: 8px 11px; }
+  .register-compact-form .captcha-block { gap: 4px; }
+  .register-compact-form .login-submit { margin-top: 1px; padding: 10px; }
+}
 
 .login-panel {
   display: flex;

@@ -57,6 +57,8 @@ export interface FoodComment {
   author: UserSummary
   content: string
   createdAt: string
+  checkinId?: number
+  eatenOn?: string
 }
 
 export interface FoodCommentCreatePayload {
@@ -70,11 +72,27 @@ export interface FoodCheckin {
   eatenOn: string
   note?: string
   visibility: 'PUBLIC' | 'PRIVATE'
+  timezone: string
+  version: number
   createdAt: string
   updatedAt: string
 }
 
-export interface FoodTag { id: number; type: 'TASTE' | 'INGREDIENT' | 'CUISINE'; name: string; status: string; createdAt: string }
+export interface PagedCheckins { items: FoodCheckin[]; total: number; page: number; pageSize: number }
+
+export interface FoodTag {
+  id: number
+  type: 'TASTE' | 'INGREDIENT' | 'CUISINE'
+  name: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'MERGED' | 'DISABLED'
+  mergedIntoId?: number
+  version: number
+  createdBy?: number
+  createdAt: string
+  reviewedAt?: string
+}
+export interface PagedFoodTags { items: FoodTag[]; total: number; page: number; pageSize: number }
+export interface FoodTagAdminPayload { type: FoodTag['type']; name: string; status: FoodTag['status']; reason?: string; version: number }
 
 export interface FoodFootprint {
   food: Food
@@ -134,6 +152,14 @@ export interface PagedCatalog {
   page: number
   pageSize: number
 }
+
+export interface FoodMapResults {
+  items: FoodMarker[]
+  total: number
+  truncated: boolean
+}
+
+export type FoodSort = 'RELEVANCE' | 'HEAT' | 'NEWEST'
 
 export interface MapCoordinate {
   latitude: number
@@ -213,6 +239,7 @@ export interface FoodCreatePayload {
   ingredients: string
   imageUrl?: string
   remark?: string
+  tagIds?: number[]
 }
 
 export type FoodUpdatePayload = FoodCreatePayload

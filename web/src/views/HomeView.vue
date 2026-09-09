@@ -3,22 +3,34 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { getFoodCatalog, getFoodMarkers, getMyFavorites, getRegions, reverseMapLocation } from '../api'
+import { getFoodCatalog, getFoodMapResults, getFoodTags, getMyFavoritesPage, getRegions, reverseMapLocation } from '../api'
 import { useAuth } from '../auth'
 import FoodMap from '../components/FoodMap.vue'
 import FoodUploadModal from '../components/FoodUploadModal.vue'
 import RegionDrawer from '../components/RegionDrawer.vue'
-import type { Food, FoodMarker, MapBounds, MapCoordinate, MapFocus, Region } from '../types'
+import type { Food, FoodMarker, FoodSort, FoodTag, MapBounds, MapCoordinate, MapFocus, Region } from '../types'
 
 const foods = ref<Food[]>([])
 const markerFoods = ref<FoodMarker[]>([])
 const regions = ref<Region[]>([])
 const favorites = ref<Food[]>([])
+const favoriteTotal = ref(0)
+const favoritePage = ref(1)
+const favoritesLoading = ref(false)
+const favoritesError = ref('')
 const catalogTotal = ref(0)
 const catalogPage = ref(1)
 const catalogPageSize = 30
 const keyword = ref('')
 const selectedRegionId = ref<number>()
+const tags = ref<FoodTag[]>([])
+const selectedTasteIds = ref<number[]>([])
+const selectedIngredientIds = ref<number[]>([])
+const selectedCuisineIds = ref<number[]>([])
+const sort = ref<FoodSort>('RELEVANCE')
+const inBounds = ref(false)
+const filtersOpen = ref(false)
+const mapTruncated = ref(false)
 const loading = ref(true)
 const error = ref('')
 const uploadOpen = ref(false)
@@ -46,8 +58,82 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
 
+function queryNumber(value: unknown): number | undefined {
+  const parsed = Number(Array.isArray(value) ? value[0] : value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined
+}
+
+function queryIds(value: unknown): number[] {
+  const values = Array.isArray(value) ? value : value == null ? [] : String(value).split(',')
+  return values.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0).slice(0, 10)
+}
+
+keyword.value = typeof route.query.q === 'string' ? route.query.q : ''
+selectedRegionId.value = queryNumber(route.query.region)
+selectedTasteIds.value = queryIds(route.query.taste)
+selectedIngredientIds.value = queryIds(route.query.ingredient)
+selectedCuisineIds.value = queryIds(route.query.cuisine)
+sort.value = ['RELEVANCE', 'HEAT', 'NEWEST'].includes(String(route.query.sort))
+  ? String(route.query.sort) as FoodSort : 'RELEVANCE'
+inBounds.value = route.query.bounds === '1'
+
+const selectedFilterCount = computed(() => selectedTasteIds.value.length
+  + selectedIngredientIds.value.length + selectedCuisineIds.value.length + (inBounds.value ? 1 : 0))
+const tagsByType = (type: FoodTag['type']) => tags.value.filter((tag) => tag.type === type)
+
+function discoveryQuery() {
+  return {
+    ...(keyword.value.trim() ? { q: keyword.value.trim() } : {}),
+    ...(selectedRegionId.value ? { region: String(selectedRegionId.value) } : {}),
+    ...(selectedTasteIds.value.length ? { taste: selectedTasteIds.value.join(',') } : {}),
+    ...(selectedIngredientIds.value.length ? { ingredient: selectedIngredientIds.value.join(',') } : {}),
+    ...(selectedCuisineIds.value.length ? { cuisine: selectedCuisineIds.value.join(',') } : {}),
+    ...(sort.value !== 'RELEVANCE' ? { sort: sort.value } : {}),
+    ...(inBounds.value ? { bounds: '1' } : {}),
+  }
+}
+
+function searchParams() {
+  return {
+    keyword: keyword.value.trim() || undefined,
+    regionId: selectedRegionId.value,
+    tasteIds: selectedTasteIds.value,
+    ingredientIds: selectedIngredientIds.value,
+    cuisineIds: selectedCuisineIds.value,
+    sort: sort.value,
+    inBounds: inBounds.value,
+    ...(inBounds.value ? mapBounds.value : undefined),
+  }
+}
+
 async function loadFavorites() {
-  try { favorites.value = auth.currentUser.value ? await getMyFavorites() : [] } catch { favorites.value = [] }
+  const expectedUserId = auth.currentUser.value?.id
+  favorites.value = []
+  favoriteTotal.value = 0
+  favoritesError.value = ''
+  if (!expectedUserId) return
+  favoritesLoading.value = true
+  try {
+    const result = await getMyFavoritesPage(1, 10)
+    if (auth.currentUser.value?.id !== expectedUserId) return
+    favorites.value = result.items
+    favoriteTotal.value = result.total
+    favoritePage.value = result.page
+  } catch { if (auth.currentUser.value?.id === expectedUserId) favoritesError.value = t('home.favoritesError') }
+  finally { if (auth.currentUser.value?.id === expectedUserId) favoritesLoading.value = false }
+}
+
+async function loadMoreFavorites() {
+  const expectedUserId = auth.currentUser.value?.id
+  if (!expectedUserId || favoritesLoading.value || favorites.value.length >= favoriteTotal.value) return
+  favoritesLoading.value = true
+  try {
+    const result = await getMyFavoritesPage(favoritePage.value + 1, 10)
+    if (auth.currentUser.value?.id !== expectedUserId) return
+    favorites.value.push(...result.items.filter(item => !favorites.value.some(current => current.id === item.id)))
+    favoritePage.value = result.page
+  } catch { if (auth.currentUser.value?.id === expectedUserId) favoritesError.value = t('home.favoritesError') }
+  finally { if (auth.currentUser.value?.id === expectedUserId) favoritesLoading.value = false }
 }
 
 const regionToggleLabel = computed(() => {
@@ -85,8 +171,7 @@ async function loadCatalog(targetPage?: number) {
 
   try {
     const next = await getFoodCatalog({
-      keyword: keyword.value || undefined,
-      regionId: selectedRegionId.value,
+      ...searchParams(),
       page,
       pageSize: catalogPageSize,
     })
@@ -110,13 +195,10 @@ async function loadCatalog(targetPage?: number) {
 async function loadMarkers() {
   const requestSequence = ++markerRequestSequence
   try {
-    const next = await getFoodMarkers({
-      keyword: keyword.value || undefined,
-      regionId: selectedRegionId.value,
-      ...mapBounds.value,
-    })
+    const next = await getFoodMapResults(searchParams())
     if (requestSequence === markerRequestSequence) {
-      markerFoods.value = next
+      markerFoods.value = next.items
+      mapTruncated.value = next.truncated
     }
   } catch {
     // 地图标记刷新失败时保留旧图钉，不打断浏览（目录加载失败已有独立提示）。
@@ -158,10 +240,7 @@ function movedEnough(previous: MapBounds, current: MapBounds) {
 }
 
 function updateMapBounds(bounds: MapBounds, zoom: number) {
-  // 关键词搜索是全局结果，不随地图视口过滤，拖动地图时跳过刷新。
-  if (keyword.value.trim()) return
-  // 全国视野（zoom ≤ 4）数据全集不变，拖动不刷新（初始加载已覆盖）。
-  if (zoom <= 4) return
+  if (!inBounds.value) return
   if (lastMarkerView) {
     const zoomChanged = lastMarkerView.zoom !== zoom
     if (!zoomChanged && !movedEnough(lastMarkerView.bounds, bounds)) return
@@ -173,11 +252,21 @@ function updateMapBounds(bounds: MapBounds, zoom: number) {
 }
 
 function submitSearch() {
-  mapBounds.value = undefined
-  const keywordActive = keyword.value.trim().length > 0
-  void loadCatalog(1)
-  // 关键词搜索让地图标记随搜索重置为全局命中集合。
-  if (keywordActive) void loadMarkers()
+  void applyDiscovery()
+}
+
+async function applyDiscovery() {
+  filtersOpen.value = false
+  await router.replace({ path: '/', query: discoveryQuery() })
+  await Promise.all([loadCatalog(1), loadMarkers()])
+}
+
+function clearFilters() {
+  selectedTasteIds.value = []
+  selectedIngredientIds.value = []
+  selectedCuisineIds.value = []
+  inBounds.value = false
+  void applyDiscovery()
 }
 
 onBeforeUnmount(() => {
@@ -188,6 +277,7 @@ onBeforeUnmount(() => {
 
 async function chooseRegion(regionId?: number) {
   selectedRegionId.value = regionId
+  await router.replace({ path: '/', query: discoveryQuery() })
   lastMarkerView = undefined
   mapBounds.value = undefined
 
@@ -403,7 +493,7 @@ onMounted(async () => {
   // 首次进入首页即请求浏览器位置权限；失败时保留完整的手动选点流程。
   locateUser()
   try {
-    regions.value = await getRegions()
+    ;[regions.value, tags.value] = await Promise.all([getRegions(), getFoodTags()])
   } catch {
     error.value = t('home.regionError')
   }
@@ -433,15 +523,39 @@ onMounted(async () => {
     </div>
     <div class="explorer-map-wash"></div>
 
+    <div class="explorer-toolbar explorer-panel">
+      <form class="explorer-search" @submit.prevent="submitSearch">
+        <input v-model="keyword" :placeholder="t('home.searchPlaceholder')"><button>{{ t('home.search') }}</button>
+      </form>
+      <button class="explorer-outline" type="button" :aria-expanded="regionDrawerOpen" @click="regionDrawerOpen = true"><span>{{ t('home.regionEyebrow') }}</span><b>{{ regionToggleLabel }}</b></button>
+      <button class="explorer-outline" type="button" :aria-expanded="filtersOpen" @click="filtersOpen = !filtersOpen"><span>{{ t('home.filters') }}</span><b>{{ t('home.selectedFilters', { count: selectedFilterCount }) }}</b></button>
+      <label class="explorer-sort"><span>{{ t('home.sort') }}</span><select v-model="sort" @change="applyDiscovery"><option value="RELEVANCE">{{ t('home.sortRelevance') }}</option><option value="HEAT">{{ t('home.sortHeat') }}</option><option value="NEWEST">{{ t('home.sortNewest') }}</option></select></label>
+      <button class="explorer-outline" type="button" @click="openUpload"><span>{{ t('home.mapEyebrow') }}</span><b>{{ t('home.addFood') }}</b></button>
+      <section v-if="filtersOpen" class="explorer-filters" :aria-label="t('home.filters')">
+        <fieldset v-for="type in (['TASTE', 'INGREDIENT', 'CUISINE'] as const)" :key="type">
+          <legend>{{ t(`home.tagType${type}`) }}</legend>
+          <label v-for="tag in tagsByType(type)" :key="tag.id">
+            <input v-if="type === 'TASTE'" v-model="selectedTasteIds" type="checkbox" :value="tag.id">
+            <input v-else-if="type === 'INGREDIENT'" v-model="selectedIngredientIds" type="checkbox" :value="tag.id">
+            <input v-else v-model="selectedCuisineIds" type="checkbox" :value="tag.id">
+            <span>{{ tag.name }}</span>
+          </label>
+          <small v-if="!tagsByType(type).length">{{ t('home.noApprovedTags') }}</small>
+        </fieldset>
+        <label class="bounds-choice"><input v-model="inBounds" type="checkbox">{{ t('home.onlyMapBounds') }}</label>
+        <div class="filter-actions"><button type="button" @click="clearFilters">{{ t('home.clearFilters') }}</button><button type="button" @click="applyDiscovery">{{ t('home.applyFilters') }}</button></div>
+      </section>
+    </div>
+
     <aside
       class="explorer-sidebar explorer-panel"
       :class="{ 'is-collapsed': sidebarCollapsed }"
     >
       <div class="explorer-sidebar-head">
         <div>
-          <p class="eyebrow">{{ t('home.eyebrow') }}</p>
-          <h1>{{ t('home.heroTitle') }}<em>{{ t('home.heroEmphasis') }}</em></h1>
-          <p class="explorer-intro">{{ t('home.heroDescription') }}</p>
+          <p class="eyebrow">{{ t('home.favoritesEyebrow') }}</p>
+          <h1>{{ t('home.favoritesTitle') }}</h1>
+          <p class="explorer-intro">{{ t('home.favoritesCount', { count: favoriteTotal }) }}</p>
         </div>
         <button
           class="explorer-panel-toggle"
@@ -454,39 +568,18 @@ onMounted(async () => {
         </button>
       </div>
 
-      <form class="explorer-search" @submit.prevent="submitSearch">
-        <input v-model="keyword" :placeholder="t('home.searchPlaceholder')">
-        <button>{{ t('home.search') }}</button>
-      </form>
-
-      <div class="explorer-sidebar-actions">
-        <button
-          class="explorer-outline"
-          type="button"
-          :aria-expanded="regionDrawerOpen"
-          @click="regionDrawerOpen = true"
-        >
-          <span>{{ t('home.regionEyebrow') }}</span>
-          <b>{{ regionToggleLabel }}</b>
-        </button>
-        <button
-          class="explorer-outline"
-          type="button"
-          @click="openUpload"
-        >
-          <span>{{ t('home.mapEyebrow') }}</span>
-          <b>{{ t('home.addFood') }}</b>
-        </button>
-      </div>
-
       <section class="sidebar-favorites" aria-labelledby="sidebar-favorites-title">
-        <p class="eyebrow" id="sidebar-favorites-title">已收藏的珍馐</p>
-        <p v-if="!auth.currentUser.value" class="explorer-notice">登录后查看你的收藏。</p>
-        <p v-else-if="favorites.length === 0" class="explorer-notice">还没有收藏，先从目录挑一道吧。</p>
-        <RouterLink v-for="food in favorites.slice(0, 5)" :key="food.id" :to="`/foods/${food.id}`" class="sidebar-favorite-item">
-          <span>{{ food.name }}</span><small>{{ food.region.name }}</small>
-        </RouterLink>
-        <RouterLink v-if="auth.currentUser.value" to="/profile" class="sidebar-favorites-more">查看全部收藏 →</RouterLink>
+        <span class="sr-only" id="sidebar-favorites-title">{{ t('home.favoritesTitle') }}</span>
+        <p v-if="!auth.currentUser.value" class="explorer-notice">{{ t('home.favoritesLogin') }}</p>
+        <p v-else-if="favoritesLoading && favorites.length === 0" class="explorer-notice">{{ t('home.favoritesLoading') }}</p>
+        <p v-else-if="favoritesError" class="explorer-notice error">{{ favoritesError }} <button type="button" @click="loadFavorites">{{ t('home.retryLocation') }}</button></p>
+        <p v-else-if="favorites.length === 0" class="explorer-notice">{{ t('home.favoritesEmpty') }}</p>
+        <article v-for="favorite in favorites" :key="favorite.id" class="sidebar-favorite-item">
+          <RouterLink :to="`/foods/${favorite.id}`"><img v-if="favorite.imageUrl" :src="favorite.imageUrl" :alt="favorite.name"><span>{{ favorite.name }}</span><small>{{ favorite.region.name }}</small></RouterLink>
+          <button type="button" @click="focusFood(favorite)">{{ t('home.mapView') }}</button>
+        </article>
+        <button v-if="favorites.length < favoriteTotal" type="button" class="sidebar-favorites-more" :disabled="favoritesLoading" @click="loadMoreFavorites">{{ t('home.loadMoreFavorites') }}</button>
+        <RouterLink v-if="auth.currentUser.value" to="/profile" class="sidebar-favorites-more">{{ t('home.viewAllFavorites') }}</RouterLink>
       </section>
 
       <p v-if="pickHint" class="explorer-notice">{{ pickHint }}</p>
@@ -497,6 +590,7 @@ onMounted(async () => {
     </aside>
 
     <div class="explorer-map-hint" role="status">
+      <span v-if="mapTruncated">{{ t('home.mapTruncated') }}</span>
       <span v-if="geolocationLoading">{{ t('home.geolocationLoading') }}</span>
       <span v-else-if="locationResolving">{{ t('home.mapRegionLoading') }}</span>
       <span v-else-if="geolocationErrorKey" class="error">
@@ -559,7 +653,12 @@ onMounted(async () => {
       <p v-if="loading && foods.length" class="explorer-state">{{ t('home.refreshing') }}</p>
       <p v-if="error" class="explorer-state error">{{ error }}</p>
       <p v-if="!foods.length && loading" class="explorer-state">{{ t('home.loading') }}</p>
-      <p v-else-if="!foods.length" class="explorer-state">{{ t('home.empty') }}</p>
+      <div v-else-if="!foods.length" class="explorer-state">
+        <p>{{ t('home.emptyWithFilters') }}</p>
+        <button v-if="keyword" type="button" @click="keyword = ''; applyDiscovery()">{{ t('home.clearKeyword') }}</button>
+        <button v-if="selectedFilterCount" type="button" @click="clearFilters">{{ t('home.clearFilters') }}</button>
+        <button type="button" @click="openUpload">{{ t('home.addFood') }}</button>
+      </div>
 
       <div v-else class="explorer-cards">
         <article

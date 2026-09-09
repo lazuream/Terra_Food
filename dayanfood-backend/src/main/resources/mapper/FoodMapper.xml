@@ -75,11 +75,10 @@
         f.review_status = 'APPROVED'
         <if test="keyword != null and keyword != ''">
             AND (
-                LOWER(f.name) LIKE CONCAT('%', LOWER(#{keyword}), '%')
-                OR LOWER(COALESCE(f.ingredients, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
-                OR LOWER(COALESCE(f.address, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
-                OR LOWER(COALESCE(f.city, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
-                OR LOWER(COALESCE(f.province, '')) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+                INSTR(LOWER(f.name), LOWER(#{keyword})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.ingredients, '')), LOWER(#{keyword})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.city, '')), LOWER(#{keyword})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.province, '')), LOWER(#{keyword})) &gt; 0
             )
         </if>
         <if test="regionId != null">
@@ -146,6 +145,100 @@
         <where>
             <include refid="listConditions"/>
         </where>
+    </select>
+
+    <!-- Advanced discovery uses one condition fragment for catalog, count and map. Each
+         keyword token must match at least one supported field. INSTR keeps %, _ and other
+         user characters literal instead of turning them into SQL wildcards. -->
+    <sql id="filteredConditions">
+        f.review_status = 'APPROVED'
+        <if test="tokens != null and !tokens.isEmpty()">
+            <foreach collection="tokens" item="token">
+                AND (
+                    INSTR(LOWER(f.name), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(f.ingredients, '')), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(f.city, '')), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(f.province, '')), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(r.name, '')), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(r.province, '')), LOWER(#{token})) &gt; 0
+                    OR EXISTS (
+                        SELECT 1 FROM food_alias fa
+                        WHERE fa.food_id = f.id
+                          AND INSTR(LOWER(fa.alias), LOWER(#{token})) &gt; 0
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM food_tag_link fft
+                        INNER JOIN food_tag ft ON ft.id = fft.tag_id AND ft.status = 'APPROVED'
+                        LEFT JOIN food_tag_alias fta ON fta.tag_id = ft.id
+                        WHERE fft.food_id = f.id
+                          AND (INSTR(LOWER(ft.name), LOWER(#{token})) &gt; 0
+                            OR INSTR(LOWER(COALESCE(fta.alias, '')), LOWER(#{token})) &gt; 0)
+                    )
+                )
+            </foreach>
+        </if>
+        <if test="regionId != null">AND f.region_id = #{regionId}</if>
+        <if test="tasteIds != null and !tasteIds.isEmpty()">
+            AND EXISTS (SELECT 1 FROM food_tag_link x INNER JOIN food_tag t ON t.id=x.tag_id
+                WHERE x.food_id=f.id AND t.status='APPROVED' AND t.type='TASTE'
+                AND t.id IN <foreach collection="tasteIds" item="id" open="(" close=")" separator=",">#{id}</foreach>)
+        </if>
+        <if test="ingredientIds != null and !ingredientIds.isEmpty()">
+            AND EXISTS (SELECT 1 FROM food_tag_link x INNER JOIN food_tag t ON t.id=x.tag_id
+                WHERE x.food_id=f.id AND t.status='APPROVED' AND t.type='INGREDIENT'
+                AND t.id IN <foreach collection="ingredientIds" item="id" open="(" close=")" separator=",">#{id}</foreach>)
+        </if>
+        <if test="cuisineIds != null and !cuisineIds.isEmpty()">
+            AND EXISTS (SELECT 1 FROM food_tag_link x INNER JOIN food_tag t ON t.id=x.tag_id
+                WHERE x.food_id=f.id AND t.status='APPROVED' AND t.type='CUISINE'
+                AND t.id IN <foreach collection="cuisineIds" item="id" open="(" close=")" separator=",">#{id}</foreach>)
+        </if>
+        <if test="minLatitude != null and maxLatitude != null and minLongitude != null and maxLongitude != null">
+            AND f.latitude BETWEEN #{minLatitude} AND #{maxLatitude}
+            <choose><when test="minLongitude &lt;= maxLongitude">AND f.longitude BETWEEN #{minLongitude} AND #{maxLongitude}</when>
+            <otherwise>AND (f.longitude &gt;= #{minLongitude} OR f.longitude &lt;= #{maxLongitude})</otherwise></choose>
+        </if>
+    </sql>
+
+    <sql id="filteredOrder">
+        <choose>
+            <when test="sort == 'NEWEST'">f.created_at DESC, f.id DESC</when>
+            <when test="sort == 'HEAT' or keyword == null or keyword == ''">f.heat DESC, f.id DESC</when>
+            <otherwise>
+                CASE
+                    WHEN LOWER(f.name) = LOWER(#{keyword}) THEN 0
+                    WHEN EXISTS (SELECT 1 FROM food_alias fa WHERE fa.food_id=f.id AND LOWER(fa.alias)=LOWER(#{keyword})) THEN 1
+                    WHEN LOWER(LEFT(f.name, CHAR_LENGTH(#{keyword}))) = LOWER(#{keyword}) THEN 2
+                    WHEN INSTR(LOWER(f.name), LOWER(#{keyword})) &gt; 0 THEN 3
+                    WHEN EXISTS (SELECT 1 FROM food_tag_link fft INNER JOIN food_tag ft ON ft.id=fft.tag_id AND ft.status='APPROVED'
+                        WHERE fft.food_id=f.id AND INSTR(LOWER(ft.name), LOWER(#{keyword})) &gt; 0) THEN 4
+                    ELSE 5
+                END, f.heat DESC, f.id DESC
+            </otherwise>
+        </choose>
+    </sql>
+
+    <select id="findFilteredCatalogPage" resultMap="foodResultMap">
+        SELECT <include refid="foodColumns"/> FROM food f
+        LEFT JOIN region r ON r.id=f.region_id
+        <where><include refid="filteredConditions"/></where>
+        ORDER BY <include refid="filteredOrder"/>
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="findFilteredMarkers" resultMap="markerResultMap">
+        SELECT f.id AS food_id, f.name AS food_name, f.latitude, f.longitude, f.summary,
+               r.id AS region_id, COALESCE(NULLIF(f.city, ''), r.name) AS region_name,
+               COALESCE(NULLIF(f.province, ''), r.province) AS region_province
+        FROM food f LEFT JOIN region r ON r.id=f.region_id
+        <where><include refid="filteredConditions"/></where>
+        ORDER BY <include refid="filteredOrder"/>
+        LIMIT #{limit}
+    </select>
+
+    <select id="countFilteredCatalog" resultType="int">
+        SELECT COUNT(*) FROM food f LEFT JOIN region r ON r.id=f.region_id
+        <where><include refid="filteredConditions"/></where>
     </select>
 
     <select id="findAdminPage" resultMap="foodResultMap">

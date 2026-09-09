@@ -19,6 +19,9 @@ public interface AppUserMapper {
 
     AppUser findById(Long id);
 
+    /** Locks and returns the account in the caller's transaction. */
+    AppUser findByUsernameForUpdate(@Param("username") String username);
+
     /**
      * 公开页专用摘要查询：只取公开字段，password 等敏感列不进内存。
      */

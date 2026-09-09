@@ -48,7 +48,7 @@ public class SecurityConfig {
                                 "/error"
                         )
                         .permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/foods/**", "/api/regions/**", "/api/users/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/foods/**", "/api/regions/**", "/api/users/**", "/api/food-tags/**").permitAll()
                         // 角色授予只能由主管理员执行，必须放在后台通配规则之前。
                         .requestMatchers(HttpMethod.PATCH, "/api/admin/users/*/role").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/foods/**")

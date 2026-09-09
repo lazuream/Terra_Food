@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import type { AgentChatPayload, AgentChatResponse, FoodFootprint, FoodCheckin, FoodTag } from './types'
+import type { AgentChatPayload, AgentChatResponse, FoodFootprint, FoodCheckin, FoodTag, PagedCheckins, FoodMapResults, FoodSort, PagedFoodTags, FoodTagAdminPayload } from './types'
 
 import type {
   Achievement,
@@ -41,6 +41,11 @@ import type {
 interface FoodQuery extends Partial<MapBounds> {
   keyword?: string
   regionId?: number
+  tasteIds?: number[]
+  ingredientIds?: number[]
+  cuisineIds?: number[]
+  sort?: FoodSort
+  inBounds?: boolean
 }
 
 const api = axios.create({
@@ -83,10 +88,24 @@ export async function getFoodMarkers(params?: FoodQuery): Promise<FoodMarker[]> 
   return response.data
 }
 
+export async function getFoodMapResults(params?: FoodQuery): Promise<FoodMapResults> {
+  const response = await api.get<FoodMapResults>('/foods/map-results', { params })
+  return response.data
+}
+
 /** 目录分页：keyword/regionId 过滤 + page/pageSize，与地图 bounds 解耦。 */
 export async function getFoodCatalog(params: {
   keyword?: string
   regionId?: number
+  tasteIds?: number[]
+  ingredientIds?: number[]
+  cuisineIds?: number[]
+  sort?: FoodSort
+  inBounds?: boolean
+  minLatitude?: number
+  maxLatitude?: number
+  minLongitude?: number
+  maxLongitude?: number
   page: number
   pageSize: number
 }): Promise<PagedCatalog> {
@@ -394,13 +413,23 @@ export async function getMyFootprints(limit = 20): Promise<FoodFootprint[]> {
   return response.data
 }
 
-export async function createFoodCheckin(foodId: number, payload: { eatenOn: string; note?: string; visibility: 'PUBLIC' | 'PRIVATE' }): Promise<FoodCheckin> {
+export async function getMyFavoritesPage(page = 1, pageSize = 10): Promise<PagedCatalog> {
+  const response = await api.get<PagedCatalog>('/profile/favorites/page', { params: { page, pageSize } })
+  return response.data
+}
+
+export async function createFoodCheckin(foodId: number, payload: { eatenOn: string; note?: string; visibility: 'PUBLIC' | 'PRIVATE'; timezone: string }): Promise<FoodCheckin> {
   const response = await api.post<FoodCheckin>(`/foods/${foodId}/check-ins`, payload)
   return response.data
 }
 
-export async function getMyCheckins(limit = 20): Promise<FoodCheckin[]> {
-  const response = await api.get<FoodCheckin[]>('/profile/check-ins', { params: { limit } })
+export async function getMyCheckins(page = 1, pageSize = 20): Promise<PagedCheckins> {
+  const response = await api.get<PagedCheckins>('/profile/check-ins', { params: { page, pageSize } })
+  return response.data
+}
+
+export async function updateMyCheckin(id: number, payload: { eatenOn: string; note?: string; visibility: 'PUBLIC' | 'PRIVATE'; timezone: string; version: number }): Promise<FoodCheckin> {
+  const response = await api.patch<FoodCheckin>(`/profile/check-ins/${id}`, payload)
   return response.data
 }
 
@@ -418,6 +447,26 @@ export async function createFoodTag(payload: { type: FoodTag['type']; name: stri
   return response.data
 }
 
+export async function getFoodTagsForFood(foodId: number): Promise<FoodTag[]> {
+  const response = await api.get<FoodTag[]>(`/food-tags/food/${foodId}`)
+  return response.data
+}
+
+export async function getAdminFoodTags(params: { status?: string; type?: string; keyword?: string; page?: number; pageSize?: number } = {}): Promise<PagedFoodTags> {
+  const response = await api.get<PagedFoodTags>('/admin/food-tags', { params })
+  return response.data
+}
+
+export async function updateAdminFoodTag(id: number, payload: FoodTagAdminPayload): Promise<FoodTag> {
+  const response = await api.patch<FoodTag>(`/admin/food-tags/${id}`, payload)
+  return response.data
+}
+
+export async function mergeAdminFoodTag(id: number, targetId: number, version: number): Promise<FoodTag> {
+  const response = await api.post<FoodTag>(`/admin/food-tags/${id}/merge`, { targetId, version })
+  return response.data
+}
+
 export async function chatWithAgent(payload: AgentChatPayload): Promise<AgentChatResponse> {
   const response = await api.post<AgentChatResponse>('/agent/chat', payload, { timeout: 60_000 })
   return response.data
@@ -428,11 +477,11 @@ export async function updateMyFood(id: number, payload: FoodUpdatePayload): Prom
   return response.data
 }
 
-export async function uploadImage(file: File): Promise<string> {
+export async function uploadImage(file: File, signal?: AbortSignal): Promise<string> {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await api.post<{ url: string }>('/images', formData, { timeout: 60_000 })
+  const response = await api.post<{ url: string }>('/images', formData, { timeout: 60_000, signal })
   return response.data.url
 }
 

@@ -59,6 +59,49 @@ public interface FoodMapper {
             @Param("maxLongitude") java.math.BigDecimal maxLongitude
     );
 
+    List<FoodMarker> findFilteredMarkers(
+            @Param("keyword") String keyword,
+            @Param("tokens") List<String> tokens,
+            @Param("regionId") Long regionId,
+            @Param("tasteIds") List<Long> tasteIds,
+            @Param("ingredientIds") List<Long> ingredientIds,
+            @Param("cuisineIds") List<Long> cuisineIds,
+            @Param("minLatitude") java.math.BigDecimal minLatitude,
+            @Param("maxLatitude") java.math.BigDecimal maxLatitude,
+            @Param("minLongitude") java.math.BigDecimal minLongitude,
+            @Param("maxLongitude") java.math.BigDecimal maxLongitude,
+            @Param("sort") String sort,
+            @Param("limit") int limit
+    );
+
+    List<Food> findFilteredCatalogPage(
+            @Param("keyword") String keyword,
+            @Param("tokens") List<String> tokens,
+            @Param("regionId") Long regionId,
+            @Param("tasteIds") List<Long> tasteIds,
+            @Param("ingredientIds") List<Long> ingredientIds,
+            @Param("cuisineIds") List<Long> cuisineIds,
+            @Param("minLatitude") java.math.BigDecimal minLatitude,
+            @Param("maxLatitude") java.math.BigDecimal maxLatitude,
+            @Param("minLongitude") java.math.BigDecimal minLongitude,
+            @Param("maxLongitude") java.math.BigDecimal maxLongitude,
+            @Param("sort") String sort,
+            @Param("offset") int offset,
+            @Param("pageSize") int pageSize
+    );
+
+    int countFilteredCatalog(
+            @Param("tokens") List<String> tokens,
+            @Param("regionId") Long regionId,
+            @Param("tasteIds") List<Long> tasteIds,
+            @Param("ingredientIds") List<Long> ingredientIds,
+            @Param("cuisineIds") List<Long> cuisineIds,
+            @Param("minLatitude") java.math.BigDecimal minLatitude,
+            @Param("maxLatitude") java.math.BigDecimal maxLatitude,
+            @Param("minLongitude") java.math.BigDecimal minLongitude,
+            @Param("maxLongitude") java.math.BigDecimal maxLongitude
+    );
+
     List<Food> findByCreatedBy(String username);
 
     List<Food> findApprovedByCreatedBy(@Param("username") String username, @Param("limit") int limit);

@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * 新增菜品的接口入参。DTO 只描述外部输入，不承载持久化行为。
@@ -55,6 +56,13 @@ public record FoodCreateDTO(
         String remark,
 
         @Size(max = 100) String province,
-        @Size(max = 100) String city
+        @Size(max = 100) String city,
+        @Size(max = 30) List<Long> tagIds
 ) {
+    public FoodCreateDTO(String name, Long regionId, BigDecimal latitude, BigDecimal longitude,
+                         String address, String summary, String story, String ingredients,
+                         String imageUrl, String remark, String province, String city) {
+        this(name, regionId, latitude, longitude, address, summary, story, ingredients,
+                imageUrl, remark, province, city, List.of());
+    }
 }

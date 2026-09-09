@@ -34,7 +34,13 @@ const food = ref<Food>()
 const comments = ref<FoodComment[]>([])
 const commentContent = ref('')
 const checkinMode = ref(false)
-const checkinDate = ref(new Date().toISOString().slice(0, 10))
+function localDateInputValue(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+const checkinDate = ref(localDateInputValue())
 const checkinVisibility = ref<'PUBLIC' | 'PRIVATE'>('PUBLIC')
 const error = ref('')
 const commentError = ref('')
@@ -114,7 +120,10 @@ async function submitCheckin() {
   submittingComment.value = true
   commentError.value = ''
   try {
-    await createFoodCheckin(Number(route.params.id), { eatenOn: checkinDate.value, note: commentContent.value.trim() || undefined, visibility: checkinVisibility.value })
+    const expectedFoodId = Number(route.params.id)
+    const expectedUserId = currentUser.value.id
+    await createFoodCheckin(expectedFoodId, { eatenOn: checkinDate.value, note: commentContent.value.trim() || undefined, visibility: checkinVisibility.value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' })
+    if (Number(route.params.id) !== expectedFoodId || currentUser.value?.id !== expectedUserId) return
     commentContent.value = ''
     checkinMode.value = false
     await loadComments(Number(route.params.id))
@@ -382,7 +391,7 @@ onBeforeUnmount(() => {
           </div>
           <label for="food-comment">{{ checkinMode ? t('detail.checkinAs', { name: currentUser.displayName }) : t('detail.commentAs', { name: currentUser.displayName }) }}</label>
           <div v-if="checkinMode" class="checkin-options">
-            <label>{{ t('detail.checkinDate') }} <input v-model="checkinDate" type="date" :max="new Date().toISOString().slice(0, 10)" required></label>
+            <label>{{ t('detail.checkinDate') }} <input v-model="checkinDate" type="date" :max="localDateInputValue()" required></label>
             <label>{{ t('detail.checkinVisibility') }} <select v-model="checkinVisibility"><option value="PUBLIC">{{ t('detail.checkinPublic') }}</option><option value="PRIVATE">{{ t('detail.checkinPrivate') }}</option></select></label>
           </div>
           <textarea
@@ -390,7 +399,7 @@ onBeforeUnmount(() => {
             v-model="commentContent"
             maxlength="500"
             :placeholder="t('detail.commentPlaceholder')"
-            required
+            :required="!checkinMode"
           />
           <div class="comment-form-actions">
             <small>{{ commentContent.length }}/500</small>
@@ -447,7 +456,8 @@ onBeforeUnmount(() => {
               </div>
               <time :datetime="comment.createdAt">{{ formatDate(comment.createdAt) }}</time>
             </div>
-            <p>{{ comment.content }}</p>
+            <small v-if="comment.checkinId" class="checkin-badge">{{ t('detail.checkinBadge', { date: comment.eatenOn }) }}</small>
+            <p>{{ comment.content || t('detail.checkinWithoutNote') }}</p>
           </div>
         </div>
       </div>

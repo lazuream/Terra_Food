@@ -44,7 +44,8 @@ spring:
   servlet:
     multipart:
       max-file-size: 5MB
-      max-request-size: 5MB
+      # Multipart framing needs headroom while the image itself remains capped at 5 MiB.
+      max-request-size: 6MB
 app:
   upload-directory: ${UPLOAD_DIRECTORY:uploads}
   upload:
@@ -68,6 +69,8 @@ app:
     max-attempts: ${REGISTRATION_CODE_MAX_ATTEMPTS:5}
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    max-swallow-size: 6MB
   servlet:
     session:
       cookie:

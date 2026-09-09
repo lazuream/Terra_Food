@@ -10,4 +10,5 @@ import java.util.List;
  private final FoodTagService service; public FoodTagController(FoodTagService service){this.service=service;}
  @GetMapping public List<FoodTagVO> list(@RequestParam(required=false) String type,@RequestParam(required=false) String keyword){return service.list(type,keyword);}
  @PostMapping @ResponseStatus(org.springframework.http.HttpStatus.CREATED) public FoodTagVO create(@Valid @RequestBody FoodTagCreateDTO request,Authentication auth){return service.create(request,auth.getName());}
+ @GetMapping("/food/{foodId}") public List<FoodTagVO> forFood(@PathVariable Long foodId,Authentication auth){String username=auth==null||"anonymousUser".equals(auth.getName())?null:auth.getName();return service.forFood(foodId,username);}
 }

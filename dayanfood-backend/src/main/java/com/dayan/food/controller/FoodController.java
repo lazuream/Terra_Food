@@ -5,10 +5,10 @@ import com.dayan.food.entity.vo.FoodVO;
 import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.entity.vo.FoodImportResultVO;
 import com.dayan.food.entity.vo.FoodMarkerVO;
+import com.dayan.food.entity.vo.FoodMapResultsVO;
 import com.dayan.food.service.FoodImportService;
+import com.dayan.food.service.FoodCreationService;
 import com.dayan.food.service.FoodService;
-import com.dayan.food.mapper.AppUserMapper;
-import com.dayan.food.mapper.FoodIdempotencyMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,14 +33,12 @@ public class FoodController {
 
     private final FoodService foodService;
     private final FoodImportService foodImportService;
-    private final AppUserMapper appUserMapper;
-    private final FoodIdempotencyMapper idempotencyMapper;
+    private final FoodCreationService foodCreationService;
 
-    public FoodController(FoodService foodService, FoodImportService foodImportService, AppUserMapper appUserMapper, FoodIdempotencyMapper idempotencyMapper) {
+    public FoodController(FoodService foodService, FoodImportService foodImportService, FoodCreationService foodCreationService) {
         this.foodService = foodService;
         this.foodImportService = foodImportService;
-        this.appUserMapper = appUserMapper;
-        this.idempotencyMapper = idempotencyMapper;
+        this.foodCreationService = foodCreationService;
     }
 
     @GetMapping
@@ -84,10 +83,39 @@ public class FoodController {
     public FoodCatalogVO catalog(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Long regionId,
+            @RequestParam(required = false) List<Long> tasteIds,
+            @RequestParam(required = false) List<Long> ingredientIds,
+            @RequestParam(required = false) List<Long> cuisineIds,
+            @RequestParam(defaultValue = "RELEVANCE") String sort,
+            @RequestParam(defaultValue = "false") boolean inBounds,
+            @RequestParam(required = false) BigDecimal minLatitude,
+            @RequestParam(required = false) BigDecimal maxLatitude,
+            @RequestParam(required = false) BigDecimal minLongitude,
+            @RequestParam(required = false) BigDecimal maxLongitude,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "30") int pageSize
     ) {
-        return foodService.catalog(keyword, regionId, page, pageSize);
+        return foodService.filteredCatalog(keyword, regionId, tasteIds, ingredientIds, cuisineIds,
+                sort, inBounds ? minLatitude : null, inBounds ? maxLatitude : null,
+                inBounds ? minLongitude : null, inBounds ? maxLongitude : null, page, pageSize);
+    }
+
+    @GetMapping("/map-results")
+    public FoodMapResultsVO mapResults(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long regionId,
+            @RequestParam(required = false) List<Long> tasteIds,
+            @RequestParam(required = false) List<Long> ingredientIds,
+            @RequestParam(required = false) List<Long> cuisineIds,
+            @RequestParam(defaultValue = "RELEVANCE") String sort,
+            @RequestParam(defaultValue = "false") boolean inBounds,
+            @RequestParam(required = false) BigDecimal minLatitude,
+            @RequestParam(required = false) BigDecimal maxLatitude,
+            @RequestParam(required = false) BigDecimal minLongitude,
+            @RequestParam(required = false) BigDecimal maxLongitude) {
+        return foodService.filteredMap(keyword, regionId, tasteIds, ingredientIds, cuisineIds, sort,
+                inBounds ? minLatitude : null, inBounds ? maxLatitude : null,
+                inBounds ? minLongitude : null, inBounds ? maxLongitude : null);
     }
 
     @GetMapping("/{id}")
@@ -102,26 +130,7 @@ public class FoodController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public FoodVO create(@Valid @RequestBody FoodCreateDTO request, Authentication authentication, @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-        String username = authentication == null ? "无名" : authentication.getName();
-        if (idempotencyKey != null && !idempotencyKey.isBlank() && authentication != null) {
-            var user = appUserMapper.findByUsername(username);
-            if (user != null) {
-                String key = idempotencyKey.trim();
-                if (key.length() > 100) throw new IllegalArgumentException("幂等键过长");
-                Long existingId = idempotencyMapper.findFoodId(user.getId(), key);
-                if (existingId != null) {
-                    return foodService.listMine(username).stream().filter(food -> existingId.equals(food.id())).findFirst().orElseThrow(() -> new IllegalArgumentException("幂等记录对应的菜品不可访问"));
-                }
-                FoodVO created = foodService.create(request, username);
-                try { idempotencyMapper.insert(user.getId(), key, created.id()); }
-                catch (org.springframework.dao.DuplicateKeyException ignored) {
-                    Long duplicateId = idempotencyMapper.findFoodId(user.getId(), key);
-                    return foodService.listMine(username).stream().filter(food -> duplicateId != null && duplicateId.equals(food.id())).findFirst().orElseThrow(() -> new IllegalArgumentException("幂等记录对应的菜品不可访问"));
-                }
-                return created;
-            }
-        }
-        return foodService.create(request, username);
+        return foodCreationService.create(request, authentication.getName(), idempotencyKey);
     }
 
     @PostMapping("/import")

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { updateMyFood, uploadImage } from '../api'
+import { getFoodTagsForFood, updateMyFood, uploadImage } from '../api'
+import { useAuth } from '../auth'
 import {
   cacheDraftImage,
   clearDraft,
@@ -15,10 +16,12 @@ import {
 } from '../drafts'
 import type { Food, FoodUpdatePayload, Region } from '../types'
 import RegionDrawer from './RegionDrawer.vue'
+import FoodTagPicker from './FoodTagPicker.vue'
 
 const props = defineProps<{ food: Food; regions: Region[] }>()
 const emit = defineEmits<{ close: []; saved: [food: Food] }>()
 const { t } = useI18n()
+const auth = useAuth()
 
 const form = reactive<FoodUpdatePayload>({
   name: props.food.name,
@@ -31,6 +34,7 @@ const form = reactive<FoodUpdatePayload>({
   ingredients: props.food.ingredients,
   imageUrl: props.food.imageUrl,
   remark: props.food.remark || '',
+  tagIds: [],
 })
 const image = ref<File>()
 const imageMeta = ref<DraftImageMeta>()
@@ -42,7 +46,7 @@ const regionDrawerOpen = ref(false)
 const selectedRegion = computed(() => props.regions.find((region) => region.id === form.regionId))
 
 // 草稿缓存：按菜品区分，误关弹窗再打开不丢失填写内容；地区/坐标始终以菜品档案为准。
-const DRAFT_KEY = `foodEdit:${props.food.id}`
+const DRAFT_KEY = `foodEdit.v2:${auth.currentUser.value?.id}:${props.food.id}`
 
 interface EditDraft {
   name: string
@@ -51,6 +55,8 @@ interface EditDraft {
   story: string
   remark: string
   image?: DraftImageMeta
+  imageUrl?: string
+  tagIds?: number[]
 }
 
 const draft = readDraft<EditDraft>(DRAFT_KEY)
@@ -60,6 +66,8 @@ if (draft) {
   form.ingredients = draft.ingredients
   form.story = draft.story
   form.remark = draft.remark
+  form.imageUrl = draft.imageUrl || form.imageUrl
+  form.tagIds = draft.tagIds || []
   if (draft.image) {
     imageMeta.value = draft.image
     const cachedImage = getCachedDraftImage(DRAFT_KEY)
@@ -78,11 +86,13 @@ function persistDraft() {
     story: form.story,
     remark: form.remark,
     image: imageMeta.value,
+    imageUrl: form.imageUrl,
+    tagIds: form.tagIds,
   })
 }
 
 watch(
-  () => [form.name, form.summary, form.ingredients, form.story, form.remark, imageMeta.value],
+  () => [form.name, form.summary, form.ingredients, form.story, form.remark, form.tagIds, imageMeta.value],
   persistDraft,
 )
 
@@ -97,8 +107,12 @@ function selectImage(event: Event) {
   input.value = ''
   if (!file) return
 
+  if (file.size > 5 * 1024 * 1024) { error.value = t('upload.imageTooLarge'); return }
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { error.value = t('upload.imageInvalidType'); return }
+
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
   image.value = file
+  form.imageUrl = undefined
   imageMeta.value = { name: file.name, type: file.type, size: file.size }
   previewUrl.value = URL.createObjectURL(file)
   cacheDraftImage(DRAFT_KEY, file)
@@ -109,7 +123,7 @@ async function submit() {
   error.value = ''
   saving.value = true
   try {
-    if (image.value) form.imageUrl = await uploadImage(image.value)
+    if (image.value && !form.imageUrl) { form.imageUrl = await uploadImage(image.value); persistDraft() }
     const updated = await updateMyFood(props.food.id, form)
     clearDraft(DRAFT_KEY)
     forgetDraftImage(DRAFT_KEY)
@@ -122,6 +136,12 @@ async function submit() {
     saving.value = false
   }
 }
+
+onMounted(async () => {
+  if (draft?.tagIds) return
+  try { form.tagIds = (await getFoodTagsForFood(props.food.id)).map((tag) => tag.id) }
+  catch { /* Editing remains available if tag metadata is temporarily unavailable. */ }
+})
 </script>
 
 <template>
@@ -171,6 +191,7 @@ async function submit() {
           {{ t('upload.ingredients') }}
           <input v-model.trim="form.ingredients" required maxlength="500">
         </label>
+        <FoodTagPicker v-model="form.tagIds!" />
         <label>
           {{ t('upload.story') }}
           <textarea v-model.trim="form.story" required maxlength="10000" rows="4"></textarea>

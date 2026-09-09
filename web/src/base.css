@@ -17,6 +17,11 @@
   --color-accent-label: #9e3a2e; /* 眉题/小标签强调 */
   --border-paper: #d8cbb8;       /* 卡片描边 */
   --border-map: #cdbfa9;         /* 地图区描边 */
+  --surface-soft: #f4ecdf;
+  --surface-strong: #fffdf8;
+  --ink: var(--color-ink);
+  --muted: #826f60;
+  --shadow-card: 0 18px 45px #38251f26;
 
   font-family: var(--font-serif);
   color: var(--color-ink);
@@ -35,6 +40,18 @@
   --color-accent-label: #e59a82;
   --border-paper: #594a3e;
   --border-map: #594a3e;
+  --surface-soft: #211b18;
+  --surface-strong: #302721;
+  --ink: var(--color-ink);
+  --muted: #baa896;
+  --shadow-card: 0 18px 45px #0008;
+}
+
+:root[data-theme='dark'] body { background-color: var(--color-bg); background-image: radial-gradient(#d5b99d14 1px, transparent 1px); }
+:root[data-theme='dark'] #app > header { background: #211b18e8; border-color: var(--border-paper); }
+:root[data-theme='dark'] #app > footer { background: #211b18; color: var(--color-ink); }
+:root[data-theme='dark'] input, :root[data-theme='dark'] textarea, :root[data-theme='dark'] select {
+  background: var(--color-input); color: var(--color-ink); border-color: var(--border-paper);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,6 +64,11 @@
     --color-accent-label: #e59a82;
     --border-paper: #594a3e;
     --border-map: #594a3e;
+    --surface-soft: #211b18;
+    --surface-strong: #302721;
+    --ink: var(--color-ink);
+    --muted: #baa896;
+    --shadow-card: 0 18px 45px #0008;
   }
 }
 

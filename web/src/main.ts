@@ -6,10 +6,9 @@ import AboutView from './views/AboutView.vue'
 import AdminView from './views/AdminView.vue'
 import FoodDetailView from './views/FoodDetailView.vue'
 import HomeView from './views/HomeView.vue'
-import LoginView from './views/LoginView.vue'
+import AuthView from './views/AuthView.vue'
 import NotFoundView from './views/NotFoundView.vue'
 import ProfileView from './views/ProfileView.vue'
-import RegisterView from './views/RegisterView.vue'
 import UserPublicView from './views/UserPublicView.vue'
 import { isAdminRole, useAuth } from './auth'
 import { registerUnauthorizedHandler } from './api'
@@ -28,6 +27,8 @@ import './profile.css'
 import './agent.css'
 // 响应式规则必须最后加载，确保窄屏覆盖所有功能域样式。
 import './responsive.css'
+// Theme overrides load last so legacy fixed colors cannot win the cascade.
+import './theme.css'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -42,11 +43,11 @@ const router = createRouter({
     },
     {
       path: '/login',
-      component: LoginView,
+      component: AuthView,
     },
     {
       path: '/register',
-      component: RegisterView,
+      component: AuthView,
     },
     {
       path: '/about',

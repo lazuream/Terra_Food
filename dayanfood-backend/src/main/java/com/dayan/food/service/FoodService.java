@@ -7,6 +7,7 @@ import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.entity.vo.FoodFootprintVO;
 import com.dayan.food.entity.vo.FoodMarkerVO;
 import com.dayan.food.entity.vo.FoodPageVO;
+import com.dayan.food.entity.vo.FoodMapResultsVO;
 import com.dayan.food.entity.enums.FoodReviewStatus;
 
 import java.math.BigDecimal;
@@ -35,6 +36,16 @@ public interface FoodService {
     );
 
     FoodCatalogVO catalog(String keyword, Long regionId, int page, int pageSize);
+
+    FoodCatalogVO filteredCatalog(String keyword, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, String sort,
+            BigDecimal minLatitude, BigDecimal maxLatitude, BigDecimal minLongitude,
+            BigDecimal maxLongitude, int page, int pageSize);
+
+    FoodMapResultsVO filteredMap(String keyword, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, String sort,
+            BigDecimal minLatitude, BigDecimal maxLatitude, BigDecimal minLongitude,
+            BigDecimal maxLongitude);
 
     FoodPageVO listForAdmin(int page, int pageSize, FoodReviewStatus status);
 
