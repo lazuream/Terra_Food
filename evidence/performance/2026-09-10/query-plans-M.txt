@@ -1,0 +1,9 @@
+UNFILTERED
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	food	NULL	ref	idx_food_review_status,idx_food_review_location,idx_food_review_id,idx_food_review_heat_id,idx_food_review_region_heat_id,idx_food_review_created_id	idx_food_review_heat_id	82	const	4347	100.00	NULL
+KEYWORD
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	food	NULL	ref	idx_food_review_status,idx_food_review_location,idx_food_review_id,idx_food_review_heat_id,idx_food_review_region_heat_id,idx_food_review_created_id	idx_food_review_status	82	const	4347	100.00	Using where
+MAP_VIEWPORT
+id	select_type	table	partitions	type	possible_keys	key	key_len	ref	rows	filtered	Extra
+1	SIMPLE	food	NULL	ref	idx_food_review_status,idx_food_review_location,idx_food_review_id,idx_food_review_heat_id,idx_food_review_region_heat_id,idx_food_review_created_id	idx_food_review_status	82	const	4347	1.23	Using where; Using temporary

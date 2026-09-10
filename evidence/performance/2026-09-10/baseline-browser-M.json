@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-09-10T02:00:11.498Z",
+  "base": "http://web",
+  "results": [
+    {
+      "profile": "mobile",
+      "run": 1,
+      "status": 200,
+      "searchMs": 2924,
+      "catalogMs": 3814,
+      "marks": []
+    },
+    {
+      "profile": "mobile",
+      "run": 2,
+      "status": 200,
+      "searchMs": 2868,
+      "catalogMs": 3693,
+      "marks": []
+    },
+    {
+      "profile": "mobile",
+      "run": 3,
+      "status": 200,
+      "searchMs": 2838,
+      "catalogMs": 3672,
+      "marks": []
+    },
+    {
+      "profile": "mobile",
+      "run": 4,
+      "status": 200,
+      "searchMs": 2892,
+      "catalogMs": 4085,
+      "marks": []
+    },
+    {
+      "profile": "mobile",
+      "run": 5,
+      "status": 200,
+      "searchMs": 2874,
+      "catalogMs": 3712,
+      "marks": []
+    },
+    {
+      "profile": "desktop",
+      "run": 1,
+      "status": 200,
+      "searchMs": 535,
+      "catalogMs": 702,
+      "marks": []
+    },
+    {
+      "profile": "desktop",
+      "run": 2,
+      "status": 200,
+      "searchMs": 510,
+      "catalogMs": 676,
+      "marks": []
+    },
+    {
+      "profile": "desktop",
+      "run": 3,
+      "status": 200,
+      "searchMs": 516,
+      "catalogMs": 685,
+      "marks": []
+    },
+    {
+      "profile": "desktop",
+      "run": 4,
+      "status": 200,
+      "searchMs": 507,
+      "catalogMs": 712,
+      "marks": []
+    },
+    {
+      "profile": "desktop",
+      "run": 5,
+      "status": 200,
+      "searchMs": 535,
+      "catalogMs": 739,
+      "marks": []
+    }
+  ]
+}

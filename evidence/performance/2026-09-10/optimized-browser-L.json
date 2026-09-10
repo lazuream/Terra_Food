@@ -1,0 +1,216 @@
+{
+  "generatedAt": "2026-09-10T01:55:49.885Z",
+  "base": "http://web",
+  "results": [
+    {
+      "profile": "mobile",
+      "run": 1,
+      "status": 200,
+      "searchMs": 2199,
+      "catalogMs": 2344,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 1183.7999997138977
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 2025.0999999046326
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 2271.8999996185303
+        }
+      ]
+    },
+    {
+      "profile": "mobile",
+      "run": 2,
+      "status": 200,
+      "searchMs": 2127,
+      "catalogMs": 2307,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 1186.2000002861023
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 1991.5999999046326
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 2239
+        }
+      ]
+    },
+    {
+      "profile": "mobile",
+      "run": 3,
+      "status": 200,
+      "searchMs": 2132,
+      "catalogMs": 2322,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 1193.8999996185303
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 2010.5999999046326
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 2254.8999996185303
+        }
+      ]
+    },
+    {
+      "profile": "mobile",
+      "run": 4,
+      "status": 200,
+      "searchMs": 2130,
+      "catalogMs": 2317,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 1186.9000000953674
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 2003.4000000953674
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 2249.5999999046326
+        }
+      ]
+    },
+    {
+      "profile": "mobile",
+      "run": 5,
+      "status": 200,
+      "searchMs": 2158,
+      "catalogMs": 2324,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 1198.8000001907349
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 2007.4000000953674
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 2255
+        }
+      ]
+    },
+    {
+      "profile": "desktop",
+      "run": 1,
+      "status": 200,
+      "searchMs": 258,
+      "catalogMs": 272,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 65.7000002861023
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 149.7000002861023
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 209.5
+        }
+      ]
+    },
+    {
+      "profile": "desktop",
+      "run": 2,
+      "status": 200,
+      "searchMs": 254,
+      "catalogMs": 271,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 76
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 163.5
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 223.5
+        }
+      ]
+    },
+    {
+      "profile": "desktop",
+      "run": 3,
+      "status": 200,
+      "searchMs": 218,
+      "catalogMs": 257,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 65.90000009536743
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 143.90000009536743
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 209.2000002861023
+        }
+      ]
+    },
+    {
+      "profile": "desktop",
+      "run": 4,
+      "status": 200,
+      "searchMs": 239,
+      "catalogMs": 256,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 66.2999997138977
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 141.7999997138977
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 200.2999997138977
+        }
+      ]
+    },
+    {
+      "profile": "desktop",
+      "run": 5,
+      "status": 200,
+      "searchMs": 217,
+      "catalogMs": 264,
+      "marks": [
+        {
+          "name": "terra:app-mounted",
+          "startTime": 64.89999961853027
+        },
+        {
+          "name": "terra:home-mounted",
+          "startTime": 149.09999990463257
+        },
+        {
+          "name": "terra:catalog-settled",
+          "startTime": 209
+        }
+      ]
+    }
+  ]
+}

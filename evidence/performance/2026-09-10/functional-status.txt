@@ -1,0 +1,1 @@
+login=200 upload=201 catalog=200 clusters=200
