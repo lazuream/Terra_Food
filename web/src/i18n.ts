@@ -9,7 +9,8 @@ const STORAGE_KEY = 'dayan-food-locale'
 
 function getInitialLocale(): SupportedLocale {
   // 用户主动选择的语言优先于浏览器设置，保证刷新后的语言体验一致。
-  const savedLocale = localStorage.getItem(STORAGE_KEY)
+  let savedLocale: string | null = null
+  try { savedLocale = localStorage.getItem(STORAGE_KEY) } catch { /* private/storage-restricted context */ }
   if (savedLocale === 'zh-CN' || savedLocale === 'en-US') {
     return savedLocale
   }
@@ -28,6 +29,6 @@ export const i18n = createI18n({
 })
 
 export function saveLocale(locale: SupportedLocale) {
-  localStorage.setItem(STORAGE_KEY, locale)
+  try { localStorage.setItem(STORAGE_KEY, locale) } catch { /* language still applies for this page */ }
   document.documentElement.lang = locale
 }

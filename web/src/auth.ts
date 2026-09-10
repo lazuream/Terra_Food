@@ -54,7 +54,7 @@ export function useAuth() {
         if (revision !== sessionRevision) return
         applyUser(user)
         sessionChecked = true
-        await achievementNotifications.load()
+        void achievementNotifications.load()
       } catch (error) {
         if (revision !== sessionRevision) return
         if (isAxiosError(error) && error.response?.status === 401) {
@@ -79,7 +79,7 @@ export function useAuth() {
     applyUser(user)
     sessionChecked = true
     notifySessionChange()
-    await achievementNotifications.load()
+    void achievementNotifications.load()
     return user
   }
 

@@ -48,6 +48,8 @@ export default {
     "previewAlt": "生成的菜品分享卡"
 },
   common: {
+    routeLoadFailed: '页面资源加载失败，请检查网络后刷新。',
+    reload: '刷新页面',
     appName: '大炎珍馐志',
     tagline: '寻味九州 · 记录人间烟火',
     catalog: '珍馐图鉴',

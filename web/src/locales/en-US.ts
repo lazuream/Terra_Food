@@ -48,6 +48,8 @@ export default {
     "previewAlt": "Exported food share card"
 },
   common: {
+    routeLoadFailed: 'Page resources failed to load. Check your connection and refresh.',
+    reload: 'Reload',
     appName: 'Flavors of Dayan',
     tagline: 'Discover regional flavors and everyday stories',
     catalog: 'Food Atlas',

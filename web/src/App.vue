@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
 import { isAdminRole, useAuth } from './auth'
 import { saveLocale, type SupportedLocale } from './i18n'
-import BackgroundMusic from './components/BackgroundMusic.vue'
-import AchievementToast from './components/AchievementToast.vue'
-import AgentPanel from './components/AgentPanel.vue'
+const BackgroundMusic = defineAsyncComponent(() => import('./components/BackgroundMusic.vue'))
+const AchievementToast = defineAsyncComponent(() => import('./components/AchievementToast.vue'))
+const AgentPanel = defineAsyncComponent(() => import('./components/AgentPanel.vue'))
 import { useTheme, type ThemeMode } from './theme'
 
 const { locale, t } = useI18n()
@@ -15,6 +15,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
 const mobileNavOpen = ref(false)
+const routeLoadFailed = ref(false)
 const { themeMode, setTheme } = useTheme()
 const nextLocaleLabel = computed(() => locale.value === 'zh-CN' ? 'EN' : '中')
 // 不参与常规导航展示的页面：登录/注册/关于。
@@ -57,12 +58,22 @@ function closeMenuOnKeydown(event: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', closeMenuOnOutside)
   document.addEventListener('keydown', closeMenuOnKeydown)
+  window.addEventListener('terra:route-load-error', handleRouteLoadError)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', closeMenuOnOutside)
   document.removeEventListener('keydown', closeMenuOnKeydown)
+  window.removeEventListener('terra:route-load-error', handleRouteLoadError)
 })
+
+function handleRouteLoadError() {
+  routeLoadFailed.value = true
+}
+
+function reloadPage() {
+  window.location.reload()
+}
 
 function toggleLocale() {
   const nextLocale: SupportedLocale = locale.value === 'zh-CN' ? 'en-US' : 'zh-CN'
@@ -133,6 +144,10 @@ async function logout() {
   </header>
 
   <main>
+    <div v-if="routeLoadFailed" class="route-load-error" role="alert">
+      <span>{{ t('common.routeLoadFailed') }}</span>
+      <button type="button" @click="reloadPage">{{ t('common.reload') }}</button>
+    </div>
     <RouterView />
   </main>
 
