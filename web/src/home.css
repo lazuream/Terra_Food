@@ -513,6 +513,12 @@ body:has(main > .map-explorer) > #app > header {
   border-radius: 12px 12px 4px 4px;
 }
 
+.explorer-card-photo > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .explorer-card-photo span {
   position: absolute;
   right: 7px;

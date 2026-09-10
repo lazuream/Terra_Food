@@ -11,7 +11,7 @@ import {
   createFoodComment,
   createFoodCheckin,
   getFood,
-  getFoodComments,
+  getFoodCommentsPage,
   getFavoriteStatus,
   getFoodLikeStatus,
   getWishlistStatus,
@@ -32,6 +32,8 @@ const auth = useAuth()
 const currentUser = auth.currentUser
 const food = ref<Food>()
 const comments = ref<FoodComment[]>([])
+const commentsTotal = ref(0)
+const commentsPage = ref(1)
 const commentContent = ref('')
 const checkinMode = ref(false)
 function localDateInputValue(date = new Date()) {
@@ -74,14 +76,16 @@ function formatDate(value: string): string {
   }).format(new Date(value))
 }
 
-async function loadComments(foodIdValue: number) {
+async function loadComments(foodIdValue: number, append = false) {
   const signal = foodLoadController?.signal
   commentsLoading.value = true
   commentError.value = ''
   try {
-    const result = await getFoodComments(foodIdValue)
+    const result = await getFoodCommentsPage(foodIdValue, append ? commentsPage.value + 1 : 1, 20, signal)
     if (signal?.aborted || Number(route.params.id) !== foodIdValue) return
-    comments.value = result
+    comments.value = append ? [...comments.value, ...result.items] : result.items
+    commentsPage.value = result.page
+    commentsTotal.value = result.total
   } catch {
     if (signal?.aborted) return
     commentError.value = t('detail.commentLoadError')
@@ -104,6 +108,7 @@ async function submitComment() {
     const comment = await createFoodComment(Number(route.params.id), { content })
     if (signal?.aborted) return
     comments.value.unshift(comment)
+    commentsTotal.value += 1
     commentContent.value = ''
   } catch (requestError) {
     if (signal?.aborted) return
@@ -372,7 +377,7 @@ onBeforeUnmount(() => {
           <small>{{ t('detail.commentsEyebrow') }}</small>
           <h2>{{ t('detail.comments') }}</h2>
         </div>
-        <span>{{ t('detail.commentCount', { count: comments.length }) }}</span>
+        <span>{{ t('detail.commentCount', { count: commentsTotal }) }}</span>
       </div>
 
     <form v-if="currentUser" class="comment-form" @submit.prevent="checkinMode ? submitCheckin() : submitComment()">
@@ -461,6 +466,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+      <button v-if="comments.length < commentsTotal" type="button" :disabled="commentsLoading" @click="loadComments(Number(route.params.id), true)">{{ t('home.loadMoreFavorites') }}</button>
     </section>
   </div>
   <p v-else class="state">

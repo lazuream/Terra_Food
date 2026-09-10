@@ -4,6 +4,13 @@
  */
 
 @media (max-width: 700px) {
+  .explorer-map .leaflet-tile-pane { filter: none; }
+  .explorer-panel,
+  body:has(main > .map-explorer) > #app > header {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background-color: rgba(250, 246, 237, 0.94);
+  }
 
   .region-drawer {
     width: 100%;

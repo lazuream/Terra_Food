@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import axios from 'axios'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { getFoodCatalog, getFoodMapResults, getFoodTags, getMyFavoritesPage, getRegions, reverseMapLocation } from '../api'
+import { getFoodCatalog, getFoodMapClusters, getFoodTags, getMyFavoritesPage, getRegions, reverseMapLocation } from '../api'
 import { useAuth } from '../auth'
 import FoodMap from '../components/FoodMap.vue'
-import FoodUploadModal from '../components/FoodUploadModal.vue'
-import RegionDrawer from '../components/RegionDrawer.vue'
-import type { Food, FoodMarker, FoodSort, FoodTag, MapBounds, MapCoordinate, MapFocus, Region } from '../types'
+const FoodUploadModal = defineAsyncComponent(() => import('../components/FoodUploadModal.vue'))
+const RegionDrawer = defineAsyncComponent(() => import('../components/RegionDrawer.vue'))
+import type { Food, FoodMapClusterItem, FoodSort, FoodTag, MapBounds, MapCoordinate, MapFocus, Region } from '../types'
 
 const foods = ref<Food[]>([])
-const markerFoods = ref<FoodMarker[]>([])
+const markerItems = ref<FoodMapClusterItem[]>([])
 const regions = ref<Region[]>([])
 const favorites = ref<Food[]>([])
 const favoriteTotal = ref(0)
@@ -50,6 +51,7 @@ const geolocationErrorKey = ref('')
 const geolocationCoordinate = ref<MapCoordinate>()
 const pickHint = ref('')
 const mapBounds = ref<MapBounds>()
+const mapZoom = ref(4)
 const activeFoodId = ref<number>()
 const sidebarCollapsed = ref(window.matchMedia('(max-width: 700px)').matches)
 const catalogCollapsed = ref(false)
@@ -76,6 +78,7 @@ selectedCuisineIds.value = queryIds(route.query.cuisine)
 sort.value = ['RELEVANCE', 'HEAT', 'NEWEST'].includes(String(route.query.sort))
   ? String(route.query.sort) as FoodSort : 'RELEVANCE'
 inBounds.value = route.query.bounds === '1'
+catalogPage.value = queryNumber(route.query.page) ?? 1
 
 const selectedFilterCount = computed(() => selectedTasteIds.value.length
   + selectedIngredientIds.value.length + selectedCuisineIds.value.length + (inBounds.value ? 1 : 0))
@@ -91,6 +94,18 @@ function discoveryQuery() {
     ...(sort.value !== 'RELEVANCE' ? { sort: sort.value } : {}),
     ...(inBounds.value ? { bounds: '1' } : {}),
   }
+}
+
+function restoreDiscoveryFromRoute() {
+  keyword.value = typeof route.query.q === 'string' ? route.query.q : ''
+  selectedRegionId.value = queryNumber(route.query.region)
+  selectedTasteIds.value = queryIds(route.query.taste)
+  selectedIngredientIds.value = queryIds(route.query.ingredient)
+  selectedCuisineIds.value = queryIds(route.query.cuisine)
+  sort.value = ['RELEVANCE', 'HEAT', 'NEWEST'].includes(String(route.query.sort))
+    ? String(route.query.sort) as FoodSort : 'RELEVANCE'
+  inBounds.value = route.query.bounds === '1'
+  catalogPage.value = queryNumber(route.query.page) ?? 1
 }
 
 function searchParams() {
@@ -159,9 +174,13 @@ const displayedLocation = computed<MapCoordinate | undefined>(() => {
 
 let catalogRequestSequence = 0
 let markerRequestSequence = 0
+let catalogRequestController: AbortController | undefined
+let markerRequestController: AbortController | undefined
 
 async function loadCatalog(targetPage?: number) {
   const requestSequence = ++catalogRequestSequence
+  catalogRequestController?.abort()
+  catalogRequestController = new AbortController()
   const page = Math.max(1, targetPage ?? catalogPage.value)
   error.value = ''
   // 无数据时才显示整页 loading；已有数据时保留列表，仅顶部轻量提示。
@@ -174,16 +193,17 @@ async function loadCatalog(targetPage?: number) {
       ...searchParams(),
       page,
       pageSize: catalogPageSize,
-    })
+      compact: true,
+    }, catalogRequestController.signal)
     if (requestSequence !== catalogRequestSequence) {
       return
     }
     foods.value = next.items
     catalogTotal.value = next.total
     catalogPage.value = next.page
-  } catch {
+  } catch (cause) {
     if (requestSequence === catalogRequestSequence) {
-      error.value = t('home.loadError')
+      if (!axios.isCancel(cause)) error.value = t('home.loadError')
     }
   } finally {
     if (requestSequence === catalogRequestSequence) {
@@ -193,24 +213,40 @@ async function loadCatalog(targetPage?: number) {
 }
 
 async function loadMarkers() {
+  if (!mapBounds.value) return
   const requestSequence = ++markerRequestSequence
+  markerRequestController?.abort()
+  markerRequestController = new AbortController()
   try {
-    const next = await getFoodMapResults(searchParams())
+    const next = await getFoodMapClusters({
+      ...searchParams(),
+      ...mapBounds.value,
+      inBounds: true,
+      zoom: mapZoom.value,
+    }, markerRequestController.signal)
     if (requestSequence === markerRequestSequence) {
-      markerFoods.value = next.items
-      mapTruncated.value = next.truncated
+      markerItems.value = next.items
+      mapTruncated.value = false
     }
   } catch {
     // 地图标记刷新失败时保留旧图钉，不打断浏览（目录加载失败已有独立提示）。
   }
 }
 
-function changeCatalogPage(direction: -1 | 1) {
+let suppressRouteReload = false
+
+async function changeCatalogPage(direction: -1 | 1) {
   const target = catalogPage.value + direction
   if (target < 1 || target > catalogPages.value) {
     return
   }
-  void loadCatalog(target)
+  suppressRouteReload = true
+  try {
+    await router.replace({ path: '/', query: { ...discoveryQuery(), ...(target > 1 ? { page: String(target) } : {}) } })
+  } finally {
+    suppressRouteReload = false
+  }
+  await loadCatalog(target)
 }
 
 let boundsLoadTimer: ReturnType<typeof setTimeout> | undefined
@@ -240,15 +276,18 @@ function movedEnough(previous: MapBounds, current: MapBounds) {
 }
 
 function updateMapBounds(bounds: MapBounds, zoom: number) {
-  if (!inBounds.value) return
   if (lastMarkerView) {
     const zoomChanged = lastMarkerView.zoom !== zoom
     if (!zoomChanged && !movedEnough(lastMarkerView.bounds, bounds)) return
   }
   lastMarkerView = { bounds, zoom }
   mapBounds.value = bounds
+  mapZoom.value = zoom
   if (boundsLoadTimer) clearTimeout(boundsLoadTimer)
-  boundsLoadTimer = setTimeout(() => void loadMarkers(), 250)
+  boundsLoadTimer = setTimeout(() => {
+    void loadMarkers()
+    if (inBounds.value) void loadCatalog(1)
+  }, 250)
 }
 
 function submitSearch() {
@@ -257,7 +296,9 @@ function submitSearch() {
 
 async function applyDiscovery() {
   filtersOpen.value = false
-  await router.replace({ path: '/', query: discoveryQuery() })
+  suppressRouteReload = true
+  try { await router.replace({ path: '/', query: discoveryQuery() }) }
+  finally { suppressRouteReload = false }
   await Promise.all([loadCatalog(1), loadMarkers()])
 }
 
@@ -271,6 +312,8 @@ function clearFilters() {
 
 onBeforeUnmount(() => {
   if (boundsLoadTimer) clearTimeout(boundsLoadTimer)
+  catalogRequestController?.abort()
+  markerRequestController?.abort()
   geolocationSequence += 1
   locationLookupController?.abort()
 })
@@ -297,7 +340,7 @@ async function chooseRegion(regionId?: number) {
   await loadCatalog(1)
 
   if (region.centerLatitude == null || region.centerLongitude == null) {
-    const locatedFoods = markerFoods.value.filter((food) => food.latitude != null && food.longitude != null)
+    const locatedFoods = foods.value.filter((food) => food.latitude != null && food.longitude != null)
     mapFocus.value = locatedFoods.length
       ? {
           latitude: locatedFoods.reduce((sum, food) => sum + food.latitude, 0) / locatedFoods.length,
@@ -468,6 +511,16 @@ watch(
   },
 )
 
+watch(
+  () => route.fullPath,
+  () => {
+    if (route.path !== '/' || suppressRouteReload || route.query.map === 'reset') return
+    restoreDiscoveryFromRoute()
+    void Promise.all([loadCatalog(catalogPage.value), loadMarkers()])
+  },
+  { flush: 'sync' },
+)
+
 watch(() => auth.currentUser.value?.id, () => { void loadFavorites() })
 
 async function openUpload() {
@@ -490,18 +543,18 @@ async function openUpload() {
 
 onMounted(async () => {
   void loadFavorites()
-  // 首次进入首页即请求浏览器位置权限；失败时保留完整的手动选点流程。
-  locateUser()
-  try {
-    ;[regions.value, tags.value] = await Promise.all([getRegions(), getFoodTags()])
-  } catch {
-    error.value = t('home.regionError')
-  }
-
-  // 目录与地图标记走独立数据源并同时首载：目录受 keyword/regionId 分页驱动，
-  // 标记受地图视口驱动；地图 bounds 只在后续拖动时作为标记刷新条件。
-  await Promise.all([loadCatalog(), loadMarkers()])
+  performance.mark('terra:home-mounted')
+  void getRegions().then((value) => { regions.value = value }).catch(() => {})
+  void getFoodTags().then((value) => { tags.value = value }).catch(() => {})
+  void loadCatalog().finally(() => performance.mark('terra:catalog-settled'))
+  // 地图初始化发出首个视口后再加载聚合点位。
 })
+
+function imageSrcSet(food: Food) {
+  const variants = food.imageVariants
+  return [variants?.small && `${variants.small} 320w`, variants?.medium && `${variants.medium} 640w`, variants?.large && `${variants.large} 1280w`]
+    .filter(Boolean).join(', ') || undefined
+}
 </script>
 
 <template>
@@ -514,7 +567,8 @@ onMounted(async () => {
   >
     <div class="explorer-map" :aria-label="t('home.mapTitle')">
       <FoodMap
-        :foods="markerFoods"
+        :items="markerItems"
+        :filters="searchParams()"
         :focus="mapFocus"
         :picked-location="displayedLocation"
         @pick="handleMapPick"
@@ -662,7 +716,7 @@ onMounted(async () => {
 
       <div v-else class="explorer-cards">
         <article
-          v-for="food in catalogFoods"
+          v-for="(food, index) in catalogFoods"
           :key="food.id"
           class="explorer-card"
           :class="{ 'is-active': activeFoodId === food.id }"
@@ -673,11 +727,8 @@ onMounted(async () => {
             :aria-label="t('home.focusFood', { name: food.name })"
             @click="focusFood(food)"
           ></button>
-          <div
-            class="explorer-card-photo"
-            :class="{ 'no-cover': !food.imageUrl }"
-            :style="{ backgroundImage: food.imageUrl ? 'url(' + food.imageUrl + ')' : undefined }"
-          >
+          <div class="explorer-card-photo" :class="{ 'no-cover': !food.imageUrl }">
+            <img v-if="food.imageUrl" :src="food.imageVariants?.medium || food.imageUrl" :srcset="imageSrcSet(food)" sizes="(max-width: 700px) 45vw, 260px" :alt="food.name" :loading="index < 2 ? 'eager' : 'lazy'" :fetchpriority="index < 2 ? 'high' : 'auto'" decoding="async">
             <span>{{ food.region.province }} · {{ food.region.name }}</span>
           </div>
           <div class="explorer-card-body">

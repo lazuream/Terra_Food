@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
-import { addWishlistItem, deleteEtching, deleteMyCheckin, deleteWishlistItem, getAchievements, getMyEtchings, getMyFavorites, getMyFoods, getMyFootprints, getMyCheckins, getMyWishlist, getRegions, removeFavorite, selectAchievement, selectEtching, updateAvatar, updateMyCheckin, updateMyDisplayName, updateMySignature, uploadImage } from '../api'
+import { addWishlistItem, deleteEtching, deleteMyCheckin, deleteWishlistItem, getAchievements, getMyEtchings, getMyFavoritesPage, getMyFoods, getMyFootprints, getMyCheckins, getMyWishlistPage, getRegions, removeFavorite, selectAchievement, selectEtching, updateAvatar, updateMyCheckin, updateMyDisplayName, updateMySignature, uploadImage } from '../api'
 import { useAuth } from '../auth'
 import { apiErrorMessage } from '../apiError'
-import FoodEditModal from '../components/FoodEditModal.vue'
-import EtchingStudio from '../components/EtchingStudio.vue'
+const FoodEditModal = defineAsyncComponent(() => import('../components/FoodEditModal.vue'))
+const EtchingStudio = defineAsyncComponent(() => import('../components/EtchingStudio.vue'))
 import HexEtching from '../components/HexEtching.vue'
 import type { Achievement, EtchingDesign, Food, FoodCheckin, FoodFootprint, FoodReviewStatus, Region, SignatureStatus, WishlistItem, WishlistMatchField } from '../types'
 
@@ -24,6 +24,11 @@ const checkinError = ref('')
 const checkinDraft = ref({ eatenOn: '', note: '', visibility: 'PUBLIC' as 'PUBLIC' | 'PRIVATE', version: 0 })
 const favorites = ref<Food[]>([])
 const wishlist = ref<WishlistItem[]>([])
+const favoritesTotal = ref(0)
+const wishlistTotal = ref(0)
+const favoritesPage = ref(1)
+const wishlistPage = ref(1)
+const collectionsLoading = ref(false)
 const collectionTab = ref<'favorites' | 'wishlist'>(route.query.tab === 'wishlist' ? 'wishlist' : 'favorites')
 const wishlistDraft = ref('')
 const wishlistSaving = ref(false)
@@ -126,6 +131,7 @@ async function createWishlistItem() {
   try {
     const created = await addWishlistItem({ content })
     wishlist.value.unshift(created)
+    wishlistTotal.value += 1
     wishlistDraft.value = ''
   } catch (requestError) {
     collectionError.value = axios.isAxiosError(requestError)
@@ -143,6 +149,7 @@ async function removeFavoriteItem(food: Food) {
   try {
     await removeFavorite(food.id)
     favorites.value = favorites.value.filter((item) => item.id !== food.id)
+    favoritesTotal.value = Math.max(0, favoritesTotal.value - 1)
   } catch {
     collectionError.value = t('profile.collectionError')
   } finally {
@@ -157,6 +164,7 @@ async function removeWishlistItem(item: WishlistItem) {
   try {
     await deleteWishlistItem(item.id)
     wishlist.value = wishlist.value.filter((candidate) => candidate.id !== item.id)
+    wishlistTotal.value = Math.max(0, wishlistTotal.value - 1)
   } catch {
     collectionError.value = t('profile.collectionError')
   } finally {
@@ -322,8 +330,6 @@ async function loadProfile() {
       section('regions', async () => { regions.value = await getRegions() }),
       section('achievements', async () => { achievements.value = await getAchievements() }),
       section('etchings', async () => { etchings.value = await getMyEtchings() }),
-      section('favorites', async () => { favorites.value = await getMyFavorites() }),
-      section('wishlist', async () => { wishlist.value = await getMyWishlist() }),
     ])
   } finally {
     loading.value = false
@@ -331,6 +337,33 @@ async function loadProfile() {
   }
 }
 onMounted(loadProfile)
+
+async function loadCurrentCollection(reset = true) {
+  if (collectionsLoading.value) return
+  collectionsLoading.value = true
+  collectionError.value = ''
+  try {
+    if (collectionTab.value === 'favorites') {
+      const page = reset ? 1 : favoritesPage.value + 1
+      const result = await getMyFavoritesPage(page, 20)
+      favorites.value = reset ? result.items : [...favorites.value, ...result.items]
+      favoritesPage.value = result.page
+      favoritesTotal.value = result.total
+    } else {
+      const page = reset ? 1 : wishlistPage.value + 1
+      const result = await getMyWishlistPage(page, 20)
+      wishlist.value = reset ? result.items : [...wishlist.value, ...result.items]
+      wishlistPage.value = result.page
+      wishlistTotal.value = result.total
+    }
+  } catch (cause) {
+    collectionError.value = apiErrorMessage(cause, t('profile.loadError'))
+  } finally {
+    collectionsLoading.value = false
+  }
+}
+
+watch(collectionTab, () => { void loadCurrentCollection(true) }, { immediate: true })
 
 </script>
 
@@ -458,7 +491,7 @@ onMounted(loadProfile)
           :class="{ active: collectionTab === 'favorites' }"
           @click="collectionTab = 'favorites'"
         >
-          {{ t('profile.favoritesTab') }} <span>{{ favorites.length }}</span>
+          {{ t('profile.favoritesTab') }} <span>{{ favoritesTotal }}</span>
         </button>
         <button
           type="button"
@@ -467,7 +500,7 @@ onMounted(loadProfile)
           :class="{ active: collectionTab === 'wishlist' }"
           @click="collectionTab = 'wishlist'"
         >
-          {{ t('profile.wishlistTab') }} <span>{{ wishlist.length }}</span>
+          {{ t('profile.wishlistTab') }} <span>{{ wishlistTotal }}</span>
         </button>
       </div>
 
@@ -494,6 +527,7 @@ onMounted(loadProfile)
           <p>{{ t('profile.favoriteEmpty') }}</p>
           <RouterLink to="/">{{ t('profile.browseFoods') }}</RouterLink>
         </div>
+        <button v-if="favorites.length < favoritesTotal" type="button" :disabled="collectionsLoading" @click="loadCurrentCollection(false)">{{ t('home.loadMoreFavorites') }}</button>
       </template>
 
       <template v-else>
@@ -541,6 +575,7 @@ onMounted(loadProfile)
           </article>
         </div>
         <div v-else-if="!loading && !loadFailures.includes('wishlist')" class="collection-empty"><p>{{ t('profile.wishlistEmpty') }}</p></div>
+        <button v-if="wishlist.length < wishlistTotal" type="button" :disabled="collectionsLoading" @click="loadCurrentCollection(false)">{{ t('home.loadMoreFavorites') }}</button>
       </template>
     </section>
 

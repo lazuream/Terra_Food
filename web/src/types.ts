@@ -41,6 +41,7 @@ export interface Food {
   story: string
   ingredients: string
   imageUrl?: string
+  imageVariants?: { small?: string; medium?: string; large?: string }
   remark?: string
   heat: number
   reviewStatus: FoodReviewStatus
@@ -60,6 +61,8 @@ export interface FoodComment {
   checkinId?: number
   eatenOn?: string
 }
+
+export interface PagedComments { items: FoodComment[]; total: number; page: number; pageSize: number }
 
 export interface FoodCommentCreatePayload {
   content: string
@@ -159,6 +162,27 @@ export interface FoodMapResults {
   truncated: boolean
 }
 
+export interface FoodMapClusterItem {
+  id: string
+  kind: 'POINT' | 'CLUSTER'
+  count: number
+  foodId?: number
+  name?: string
+  latitude: number
+  longitude: number
+  minLatitude: number
+  maxLatitude: number
+  minLongitude: number
+  maxLongitude: number
+}
+
+export interface FoodMapClusters {
+  dataVersion: number
+  total: number
+  zoom: number
+  items: FoodMapClusterItem[]
+}
+
 export type FoodSort = 'RELEVANCE' | 'HEAT' | 'NEWEST'
 
 export interface MapCoordinate {
@@ -240,6 +264,13 @@ export interface FoodCreatePayload {
   imageUrl?: string
   remark?: string
   tagIds?: number[]
+}
+
+export interface PagedWishlist {
+  items: WishlistItem[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 export type FoodUpdatePayload = FoodCreatePayload

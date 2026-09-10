@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import type { AgentChatPayload, AgentChatResponse, FoodFootprint, FoodCheckin, FoodTag, PagedCheckins, FoodMapResults, FoodSort, PagedFoodTags, FoodTagAdminPayload } from './types'
+import type { AgentChatPayload, AgentChatResponse, FoodFootprint, FoodCheckin, FoodTag, PagedCheckins, FoodMapResults, FoodMapClusters, FoodMapClusterItem, FoodSort, PagedFoodTags, FoodTagAdminPayload, PagedWishlist } from './types'
 
 import type {
   Achievement,
@@ -22,6 +22,7 @@ import type {
   MapBounds,
   PagedCatalog,
   PagedFoods,
+  PagedComments,
   LoginPayload,
   PasswordResetPayload,
   SetUserActivePayload,
@@ -38,7 +39,7 @@ import type {
   WishlistStatus,
 } from './types'
 
-interface FoodQuery extends Partial<MapBounds> {
+export interface FoodQuery extends Partial<MapBounds> {
   keyword?: string
   regionId?: number
   tasteIds?: number[]
@@ -88,8 +89,21 @@ export async function getFoodMarkers(params?: FoodQuery): Promise<FoodMarker[]> 
   return response.data
 }
 
-export async function getFoodMapResults(params?: FoodQuery): Promise<FoodMapResults> {
-  const response = await api.get<FoodMapResults>('/foods/map-results', { params })
+export async function getFoodMapResults(params?: FoodQuery, signal?: AbortSignal): Promise<FoodMapResults> {
+  const response = await api.get<FoodMapResults>('/foods/map-results', { params, signal })
+  return response.data
+}
+
+export async function getFoodMapClusters(params: FoodQuery & { zoom: number }, signal?: AbortSignal): Promise<FoodMapClusters> {
+  const response = await api.get<FoodMapClusters>('/foods/map-clusters', { params, signal })
+  return response.data
+}
+
+export async function getFoodMapClusterMembers(cluster: FoodMapClusterItem, params: FoodQuery): Promise<PagedCatalog> {
+  const response = await api.get<PagedCatalog>(`/foods/map-clusters/${cluster.id}/members`, {
+    params: { ...params, minLatitude: cluster.minLatitude, maxLatitude: cluster.maxLatitude,
+      minLongitude: cluster.minLongitude, maxLongitude: cluster.maxLongitude, page: 1, pageSize: 20 },
+  })
   return response.data
 }
 
@@ -108,8 +122,9 @@ export async function getFoodCatalog(params: {
   maxLongitude?: number
   page: number
   pageSize: number
-}): Promise<PagedCatalog> {
-  const response = await api.get<PagedCatalog>('/foods/catalog', { params })
+  compact?: boolean
+}, signal?: AbortSignal): Promise<PagedCatalog> {
+  const response = await api.get<PagedCatalog>('/foods/catalog', { params, signal })
   return response.data
 }
 
@@ -413,6 +428,11 @@ export async function getMyFootprints(limit = 20): Promise<FoodFootprint[]> {
   return response.data
 }
 
+export async function getFoodCommentsPage(foodId: number, page = 1, pageSize = 20, signal?: AbortSignal): Promise<PagedComments> {
+  const response = await api.get<PagedComments>(`/foods/${foodId}/comments/page`, { params: { page, pageSize }, signal })
+  return response.data
+}
+
 export async function getMyFavoritesPage(page = 1, pageSize = 10): Promise<PagedCatalog> {
   const response = await api.get<PagedCatalog>('/profile/favorites/page', { params: { page, pageSize } })
   return response.data
@@ -495,8 +515,7 @@ export async function importFoodSpreadsheet(file: File): Promise<FoodImportResul
 }
 
 export async function login(payload: LoginPayload): Promise<AuthUser> {
-  // 登录响应会等待用户信息与地图菜品完成 Redis 预热；首次冷缓存可能超过全局 8 秒。
-  const response = await api.post<AuthUser>('/auth/login', payload, { timeout: 60_000 })
+  const response = await api.post<AuthUser>('/auth/login', payload)
   return response.data
 }
 
@@ -533,6 +552,12 @@ export async function removeFavorite(foodId: number): Promise<FavoriteStatus> {
 export async function getMyWishlist(): Promise<WishlistItem[]> {
   const response = await api.get<WishlistItem[]>('/profile/wishlist')
   if (!Array.isArray(response.data)) throw new Error('Invalid list response')
+  return response.data
+}
+
+export async function getMyWishlistPage(page = 1, pageSize = 20): Promise<PagedWishlist> {
+  const response = await api.get<PagedWishlist>('/profile/wishlist/page', { params: { page, pageSize } })
+  if (!response.data || !Array.isArray(response.data.items)) throw new Error('Invalid wishlist response')
   return response.data
 }
 
