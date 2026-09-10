@@ -7,7 +7,6 @@ import com.dayan.food.entity.dto.RegistrationCodeSendDTO;
 import com.dayan.food.entity.dto.RegisterDTO;
 import com.dayan.food.entity.vo.AuthUserVO;
 import com.dayan.food.service.AuthService;
-import com.dayan.food.service.LoginPreloadService;
 import com.dayan.food.service.PasswordResetCodeService;
 import com.dayan.food.service.RegistrationCodeService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,18 +29,15 @@ public class AuthController {
     private final AuthService authService;
     private final RegistrationCodeService registrationCodeService;
     private final PasswordResetCodeService passwordResetCodeService;
-    private final LoginPreloadService loginPreloadService;
 
     public AuthController(
             AuthService authService,
             RegistrationCodeService registrationCodeService,
-            PasswordResetCodeService passwordResetCodeService,
-            LoginPreloadService loginPreloadService
+            PasswordResetCodeService passwordResetCodeService
     ) {
         this.authService = authService;
         this.registrationCodeService = registrationCodeService;
         this.passwordResetCodeService = passwordResetCodeService;
-        this.loginPreloadService = loginPreloadService;
     }
 
     @PostMapping("/login")
@@ -61,10 +57,6 @@ public class AuthController {
                 HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
                 context
         );
-
-        // 让前端登录读条与真实初始化工作对应：Session 用户身份和全国地图标记
-        // 会在响应返回前写入 Redis，后续首页首载可直接命中缓存。
-        loginPreloadService.preload(result.user().username());
 
         return result.user();
     }

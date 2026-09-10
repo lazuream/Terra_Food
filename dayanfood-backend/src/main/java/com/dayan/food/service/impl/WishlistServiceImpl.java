@@ -6,10 +6,10 @@ import com.dayan.food.entity.vo.FoodVO;
 import com.dayan.food.entity.vo.WishlistItemVO;
 import com.dayan.food.entity.vo.WishlistMatchVO;
 import com.dayan.food.entity.vo.WishlistStatusVO;
+import com.dayan.food.entity.vo.WishlistPageVO;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FoodMapper;
 import com.dayan.food.mapper.WishlistMapper;
-import com.dayan.food.service.FoodService;
 import com.dayan.food.service.WishlistService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -26,34 +26,44 @@ import java.util.Set;
 @Service
 public class WishlistServiceImpl implements WishlistService {
     private static final int MAX_MATCHES = 3;
+    private static final int MAX_CANDIDATES = 200;
     private static final Set<String> STOP_WORDS =
             Set.of("想吃", "想尝", "尝尝", "一道", "当地", "特色", "菜品", "美食", "的", "菜");
 
     private final WishlistMapper wishlistMapper;
     private final AppUserMapper appUserMapper;
     private final FoodMapper foodMapper;
-    private final FoodService foodService;
 
     public WishlistServiceImpl(
             WishlistMapper wishlistMapper,
             AppUserMapper appUserMapper,
-            FoodMapper foodMapper,
-            FoodService foodService
+            FoodMapper foodMapper
     ) {
         this.wishlistMapper = wishlistMapper;
         this.appUserMapper = appUserMapper;
         this.foodMapper = foodMapper;
-        this.foodService = foodService;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<WishlistItemVO> list(String username) {
         AppUser user = requireUser(username);
-        List<FoodVO> catalog = foodService.matchingCatalog();
         return wishlistMapper.findByUserId(user.getId()).stream()
-                .map(item -> toVO(item, catalog))
+                .map(this::toVO)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public WishlistPageVO page(String username, int page, int pageSize) {
+        AppUser user = requireUser(username);
+        int size = Math.min(Math.max(pageSize, 1), 50);
+        int total = wishlistMapper.countByUserId(user.getId());
+        int pages = Math.max(1, (int) Math.ceil((double) total / size));
+        int normalizedPage = Math.min(Math.max(page, 1), pages);
+        var items = wishlistMapper.findPageByUserId(user.getId(), (normalizedPage - 1) * size, size)
+                .stream().map(this::toVO).toList();
+        return new WishlistPageVO(items, total, normalizedPage, size);
     }
 
     @Override
@@ -86,7 +96,7 @@ public class WishlistServiceImpl implements WishlistService {
         if (wishlistMapper.insertIgnore(item) == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "这条想吃内容已经在清单中");
         }
-        return toVO(item, foodService.matchingCatalog());
+        return toVO(item);
     }
 
     @Override
@@ -98,14 +108,28 @@ public class WishlistServiceImpl implements WishlistService {
         }
     }
 
-    private WishlistItemVO toVO(WishlistItem item, List<FoodVO> catalog) {
-        List<WishlistMatchVO> matches = catalog.stream()
-                .map(food -> score(item, food))
+    private WishlistItemVO toVO(WishlistItem item) {
+        if (item.getSourceFoodId() != null) {
+            var direct = foodMapper.findById(item.getSourceFoodId());
+            List<WishlistMatchVO> matches = direct == null ? List.of()
+                    : List.of(new WishlistMatchVO(FoodVO.from(direct), 1000, List.of("DIRECT")));
+            return toVO(item, matches);
+        }
+        Set<String> itemTokens = tokens(item.getContent());
+        List<FoodVO> candidates = foodMapper.findMatchingCandidates(
+                        itemTokens.stream().limit(8).toList(), MAX_CANDIDATES)
+                .stream().map(FoodVO::from).toList();
+        List<WishlistMatchVO> matches = candidates.stream()
+                .map(food -> score(item, itemTokens, food))
                 .filter(match -> match.score() >= 8)
                 .sorted(Comparator.comparingInt(WishlistMatchVO::score).reversed()
                         .thenComparing(match -> match.food().id(), Comparator.reverseOrder()))
                 .limit(MAX_MATCHES)
                 .toList();
+        return toVO(item, matches);
+    }
+
+    private WishlistItemVO toVO(WishlistItem item, List<WishlistMatchVO> matches) {
         return new WishlistItemVO(
                 item.getId(),
                 item.getContent(),
@@ -115,7 +139,7 @@ public class WishlistServiceImpl implements WishlistService {
         );
     }
 
-    private WishlistMatchVO score(WishlistItem item, FoodVO food) {
+    private WishlistMatchVO score(WishlistItem item, Set<String> itemTokens, FoodVO food) {
         String wish = compact(item.getContent());
         String name = compact(food.name());
         String ingredients = compact(food.ingredients());
@@ -132,7 +156,7 @@ public class WishlistServiceImpl implements WishlistService {
             score += 60;
             fields.add("NAME");
         }
-        for (String token : tokens(item.getContent())) {
+        for (String token : itemTokens) {
             int size = token.codePointCount(0, token.length());
             if (name.contains(token)) { score += size == 1 ? 8 : 20; fields.add("NAME"); }
             if (ingredients.contains(token)) { score += size == 1 ? 4 : 10; fields.add("INGREDIENTS"); }

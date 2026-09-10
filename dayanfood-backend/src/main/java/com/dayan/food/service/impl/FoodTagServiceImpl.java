@@ -13,9 +13,11 @@ import java.text.Normalizer;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.cache.CacheManager;
+import com.dayan.food.cache.CacheInvalidator;
 @Service public class FoodTagServiceImpl implements FoodTagService {
- private final FoodTagMapper mapper; private final AppUserMapper users;
- public FoodTagServiceImpl(FoodTagMapper mapper, AppUserMapper users){this.mapper=mapper;this.users=users;}
+ private final FoodTagMapper mapper; private final AppUserMapper users; private final CacheManager caches; private final CacheInvalidator invalidator;
+ public FoodTagServiceImpl(FoodTagMapper mapper, AppUserMapper users, CacheManager caches, CacheInvalidator invalidator){this.mapper=mapper;this.users=users;this.caches=caches;this.invalidator=invalidator;}
  public List<FoodTagVO> list(String type,String keyword){return mapper.findApproved(type==null?null:type.toUpperCase(),keyword==null?null:keyword.trim());}
  @Transactional public FoodTagVO create(FoodTagCreateDTO request,String username){
   String type=type(request.type()); var user=requireUser(username); String name=name(request.name()); String normalized=normalize(name);
@@ -39,14 +41,14 @@ import org.springframework.web.server.ResponseStatusException;
   if(dangerous && actor.getRole()!=com.dayan.food.entity.enums.UserRole.ADMIN) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"仅主管理员可以调整分类或停用标签");
   if(mapper.updateDefinition(id,newName,normalize(newName),newType,status,actor.getId(),request.version())!=1) throw new ResponseStatusException(HttpStatus.CONFLICT,"标签已被其他管理员修改");
   if(!existing.name().equals(newName)) mapper.insertAlias(id,existing.name(),normalize(existing.name()));
-  mapper.insertAudit(id,actor.getId(),"UPDATE",request.reason()); return mapper.findById(id);
+  mapper.insertAudit(id,actor.getId(),"UPDATE",request.reason()); clearDiscovery(); return mapper.findById(id);
  }
  @Transactional public FoodTagVO merge(Long sourceId,Long targetId,int version,String username){
   if(sourceId.equals(targetId)) throw new IllegalArgumentException("标签不能合并到自身"); var actor=requireUser(username);var source=requireTag(sourceId);var target=requireTag(targetId);
   if(!source.type().equals(target.type())||!"APPROVED".equals(target.status())) throw new IllegalArgumentException("只能合并到同类型的已通过标签");
   mapper.migrateLinks(sourceId,targetId);mapper.deleteLinksForTag(sourceId);mapper.insertAlias(targetId,source.name(),normalize(source.name()));
   if(mapper.markMerged(sourceId,targetId,actor.getId(),version)!=1) throw new ResponseStatusException(HttpStatus.CONFLICT,"标签已被其他管理员修改");
-  mapper.insertAudit(sourceId,actor.getId(),"MERGE","合并到标签 "+targetId);return mapper.findById(sourceId);
+  mapper.insertAudit(sourceId,actor.getId(),"MERGE","合并到标签 "+targetId);clearDiscovery();return mapper.findById(sourceId);
  }
  private com.dayan.food.entity.po.AppUser requireUser(String username){var user=users.findByUsername(username);if(user==null||!user.isActive())throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"用户不存在或已停用");return user;}
  private FoodTagVO requireTag(Long id){var tag=mapper.findById(id);if(tag==null)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"标签不存在");return tag;}
@@ -55,4 +57,5 @@ import org.springframework.web.server.ResponseStatusException;
  private String name(String value){String name=Normalizer.normalize(value.trim(),Normalizer.Form.NFKC).replaceAll("\\s+"," ");if(name.isBlank()||name.codePoints().anyMatch(Character::isISOControl))throw new IllegalArgumentException("标签名称不合法");return name;}
  private String normalize(String value){return name(value).toLowerCase(java.util.Locale.ROOT);}
  private String blank(String value){return value==null||value.isBlank()?null:value.trim();}
+ private void clearDiscovery(){invalidator.clear(caches.getCache("foodDiscoveryCatalog"));invalidator.clear(caches.getCache("foodDiscoveryCounts"));invalidator.clear(caches.getCache("foodDiscoveryMap"));invalidator.clear(caches.getCache("wishlistMatches"));}
 }

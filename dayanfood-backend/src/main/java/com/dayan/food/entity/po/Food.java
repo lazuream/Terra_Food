@@ -30,6 +30,9 @@ public class Food {
     private String ingredients;
 
     private String imageUrl;
+    private String imageSmallUrl;
+    private String imageMediumUrl;
+    private String imageLargeUrl;
 
     private String remark;
 

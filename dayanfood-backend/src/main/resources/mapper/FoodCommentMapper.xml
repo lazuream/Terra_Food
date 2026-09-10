@@ -36,6 +36,16 @@
         WHERE c.food_id = #{foodId}
         ORDER BY c.created_at DESC, c.id DESC
     </select>
+    <select id="findPageByFoodId" resultMap="foodCommentResultMap">
+        SELECT c.id AS comment_id, c.food_id, c.content, c.created_at, ci.id AS checkin_id,
+               ci.eaten_on, u.id AS author_id, u.username AS author_username,
+               u.display_name AS author_display_name, u.avatar_url AS author_avatar_url
+        FROM food_comment c INNER JOIN app_user u ON u.id=c.user_id
+        LEFT JOIN food_checkin ci ON ci.comment_id=c.id AND ci.visibility='PUBLIC'
+        WHERE c.food_id=#{foodId} ORDER BY c.created_at DESC, c.id DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+    <select id="countByFoodId" resultType="int">SELECT COUNT(*) FROM food_comment WHERE food_id=#{foodId}</select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO food_comment (food_id, user_id, content, created_at)

@@ -14,11 +14,14 @@ import com.dayan.food.entity.vo.FoodFootprintVO;
 import com.dayan.food.entity.vo.FoodMarkerVO;
 import com.dayan.food.entity.vo.FoodPageVO;
 import com.dayan.food.entity.vo.FoodMapResultsVO;
+import com.dayan.food.entity.vo.FoodMapClustersVO;
+import com.dayan.food.entity.vo.FoodMapClusterItemVO;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FoodMapper;
 import com.dayan.food.mapper.RegionMapper;
 import com.dayan.food.service.FoodService;
 import com.dayan.food.service.FoodTagService;
+import com.dayan.food.service.DiscoveryCountService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
@@ -36,6 +39,8 @@ public class FoodServiceImpl implements FoodService {
 
     private static final int MAP_RESULT_LIMIT = 500;
     private static final int CATALOG_MAX_PAGE_SIZE = 500;
+    private static final int MAP_CLUSTER_LIMIT = 300;
+    private final java.util.concurrent.atomic.AtomicLong discoveryVersion = new java.util.concurrent.atomic.AtomicLong(1);
 
     private final FoodMapper foodMapper;
     private final RegionMapper regionMapper;
@@ -43,6 +48,7 @@ public class FoodServiceImpl implements FoodService {
     private final CacheManager cacheManager;
     private final CacheInvalidator cacheInvalidator;
     private final FoodTagService foodTagService;
+    private final DiscoveryCountService discoveryCountService;
 
     @Autowired
     public FoodServiceImpl(
@@ -51,7 +57,8 @@ public class FoodServiceImpl implements FoodService {
             AppUserMapper appUserMapper,
             CacheManager cacheManager,
             CacheInvalidator cacheInvalidator,
-            FoodTagService foodTagService
+            FoodTagService foodTagService,
+            DiscoveryCountService discoveryCountService
     ) {
         this.foodMapper = foodMapper;
         this.regionMapper = regionMapper;
@@ -59,11 +66,12 @@ public class FoodServiceImpl implements FoodService {
         this.cacheManager = cacheManager;
         this.cacheInvalidator = cacheInvalidator;
         this.foodTagService = foodTagService;
+        this.discoveryCountService = discoveryCountService;
     }
 
     public FoodServiceImpl(FoodMapper foodMapper, RegionMapper regionMapper, AppUserMapper appUserMapper,
                            CacheManager cacheManager, CacheInvalidator cacheInvalidator) {
-        this(foodMapper, regionMapper, appUserMapper, cacheManager, cacheInvalidator, null);
+        this(foodMapper, regionMapper, appUserMapper, cacheManager, cacheInvalidator, null, null);
     }
 
     @Override
@@ -99,13 +107,6 @@ public class FoodServiceImpl implements FoodService {
                 ).stream()
                 .map(FoodVO::from)
                 .toList();
-    }
-
-    @Override
-    @Cacheable(cacheNames = "wishlistMatchCatalog", key = "'approved'")
-    @Transactional(readOnly = true)
-    public List<FoodVO> matchingCatalog() {
-        return foodMapper.findApprovedForMatching().stream().map(FoodVO::from).toList();
     }
 
     @Override
@@ -178,28 +179,35 @@ public class FoodServiceImpl implements FoodService {
     }
 
     @Override
+    @Cacheable(cacheNames = "foodDiscoveryCatalog",
+            condition = "#page <= 3", sync = true)
     @Transactional(readOnly = true)
     public FoodCatalogVO filteredCatalog(String keyword, Long regionId, List<Long> tasteIds,
             List<Long> ingredientIds, List<Long> cuisineIds, String sort,
             BigDecimal minLatitude, BigDecimal maxLatitude, BigDecimal minLongitude,
-            BigDecimal maxLongitude, int page, int pageSize) {
+            BigDecimal maxLongitude, int page, int pageSize, boolean compact) {
         SearchInput input = searchInput(keyword, tasteIds, ingredientIds, cuisineIds, sort,
                 minLatitude, maxLatitude, minLongitude, maxLongitude);
         int size = Math.min(Math.max(pageSize, 1), 50);
-        int total = foodMapper.countFilteredCatalog(input.tokens(), regionId, input.tasteIds(),
-                input.ingredientIds(), input.cuisineIds(), minLatitude, maxLatitude,
-                minLongitude, maxLongitude);
+        int total = discoveryCount(input.tokens(), regionId, input.tasteIds(), input.ingredientIds(),
+                input.cuisineIds(), minLatitude, maxLatitude, minLongitude, maxLongitude);
         int pages = Math.max(1, (int) Math.ceil((double) total / size));
         int normalizedPage = Math.min(Math.max(page, 1), pages);
-        List<FoodVO> items = foodMapper.findFilteredCatalogPage(input.keyword(), input.tokens(),
+        var records = compact ? foodMapper.findFilteredCatalogCards(input.keyword(), input.tokens(),
                         regionId, input.tasteIds(), input.ingredientIds(), input.cuisineIds(),
                         minLatitude, maxLatitude, minLongitude, maxLongitude, input.sort(),
-                        (normalizedPage - 1) * size, size).stream()
+                        (normalizedPage - 1) * size, size)
+                : foodMapper.findFilteredCatalogPage(input.keyword(), input.tokens(),
+                        regionId, input.tasteIds(), input.ingredientIds(), input.cuisineIds(),
+                        minLatitude, maxLatitude, minLongitude, maxLongitude, input.sort(),
+                        (normalizedPage - 1) * size, size);
+        List<FoodVO> items = records.stream()
                 .map(FoodVO::from).toList();
         return new FoodCatalogVO(items, total, normalizedPage, size);
     }
 
     @Override
+    @Cacheable(cacheNames = "foodDiscoveryMap", condition = "#keyword == null || #keyword.isBlank()")
     @Transactional(readOnly = true)
     public FoodMapResultsVO filteredMap(String keyword, Long regionId, List<Long> tasteIds,
             List<Long> ingredientIds, List<Long> cuisineIds, String sort,
@@ -215,6 +223,31 @@ public class FoodServiceImpl implements FoodService {
                         minLatitude, maxLatitude, minLongitude, maxLongitude, input.sort(),
                         MAP_RESULT_LIMIT).stream().map(FoodMarkerVO::from).toList();
         return new FoodMapResultsVO(items, total, total > items.size());
+    }
+
+    @Override
+    @Cacheable(cacheNames = "foodDiscoveryMap", sync = true)
+    @Transactional(readOnly = true)
+    public FoodMapClustersVO mapClusters(String keyword, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, BigDecimal minLatitude,
+            BigDecimal maxLatitude, BigDecimal minLongitude, BigDecimal maxLongitude, int zoom) {
+        SearchInput input = searchInput(keyword, tasteIds, ingredientIds, cuisineIds, "RELEVANCE",
+                minLatitude, maxLatitude, minLongitude, maxLongitude);
+        int total = discoveryCount(input.tokens(), regionId, input.tasteIds(), input.ingredientIds(),
+                input.cuisineIds(), minLatitude, maxLatitude, minLongitude, maxLongitude);
+        int effectiveZoom = Math.min(Math.max(zoom, 1), 18);
+        List<com.dayan.food.entity.po.FoodMapClusterRow> rows;
+        do {
+            rows = foodMapper.findMapClusters(input.tokens(), regionId, input.tasteIds(),
+                    input.ingredientIds(), input.cuisineIds(), minLatitude, maxLatitude,
+                    minLongitude, maxLongitude, effectiveZoom, MAP_CLUSTER_LIMIT + 1);
+            if (rows.size() <= MAP_CLUSTER_LIMIT || effectiveZoom == 1) break;
+            effectiveZoom--;
+        } while (true);
+        int resultZoom = effectiveZoom;
+        var items = rows.stream().limit(MAP_CLUSTER_LIMIT)
+                .map(row -> FoodMapClusterItemVO.from(row, resultZoom)).toList();
+        return new FoodMapClustersVO(discoveryVersion.get(), total, effectiveZoom, items);
     }
 
     @Override
@@ -414,7 +447,6 @@ public class FoodServiceImpl implements FoodService {
         cacheInvalidator.clear(cacheManager.getCache("foodLists"));
         cacheInvalidator.clear(cacheManager.getCache("foodCatalogs"));
         cacheInvalidator.clear(cacheManager.getCache("foodMarkers"));
-        cacheInvalidator.clear(cacheManager.getCache("wishlistMatchCatalog"));
         return FoodVO.from(food);
     }
 
@@ -484,11 +516,15 @@ public class FoodServiceImpl implements FoodService {
     }
 
     private void clearFoodCaches(Long id) {
+        discoveryVersion.incrementAndGet();
         cacheInvalidator.invalidate(cacheManager.getCache("foodDetails"), id);
         cacheInvalidator.clear(cacheManager.getCache("foodLists"));
         cacheInvalidator.clear(cacheManager.getCache("foodCatalogs"));
         cacheInvalidator.clear(cacheManager.getCache("foodMarkers"));
-        cacheInvalidator.clear(cacheManager.getCache("wishlistMatchCatalog"));
+        cacheInvalidator.clear(cacheManager.getCache("foodDiscoveryCatalog"));
+        cacheInvalidator.clear(cacheManager.getCache("foodDiscoveryCounts"));
+        cacheInvalidator.clear(cacheManager.getCache("foodDiscoveryMap"));
+        cacheInvalidator.clear(cacheManager.getCache("wishlistMatches"));
     }
 
     private String normalizeKeyword(String keyword) {
@@ -501,6 +537,15 @@ public class FoodServiceImpl implements FoodService {
             throw new IllegalArgumentException("搜索关键词不能超过 100 个字符");
         }
         return normalized;
+    }
+
+    private int discoveryCount(List<String> tokens, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, BigDecimal minLatitude,
+            BigDecimal maxLatitude, BigDecimal minLongitude, BigDecimal maxLongitude) {
+        if (discoveryCountService != null) return discoveryCountService.count(tokens, regionId, tasteIds,
+                ingredientIds, cuisineIds, minLatitude, maxLatitude, minLongitude, maxLongitude);
+        return foodMapper.countFilteredCatalog(tokens, regionId, tasteIds, ingredientIds, cuisineIds,
+                minLatitude, maxLatitude, minLongitude, maxLongitude);
     }
 
     private SearchInput searchInput(String keyword, List<Long> tasteIds, List<Long> ingredientIds,

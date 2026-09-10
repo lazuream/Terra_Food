@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -14,16 +15,23 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final String uploadDirectory;
     private final String[] allowedOrigins;
+    private final RequestTimingInterceptor requestTimingInterceptor;
 
     public WebConfig(
             @Value("${app.upload-directory:uploads}") String uploadDirectory,
-            @Value("${app.cors.allowed-origins:http://localhost:5173}") String allowedOrigins
+            @Value("${app.cors.allowed-origins:http://localhost:5173}") String allowedOrigins,
+            RequestTimingInterceptor requestTimingInterceptor
     ) {
         this.uploadDirectory = uploadDirectory;
         this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isEmpty())
                 .toArray(String[]::new);
+        this.requestTimingInterceptor = requestTimingInterceptor;
+    }
+
+    @Override public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(requestTimingInterceptor).addPathPatterns("/api/**");
     }
 
     @Override

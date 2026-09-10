@@ -45,11 +45,11 @@ class FoodEditReviewTests {
         when(foods.findOwnedById(7L, "owner")).thenReturn(original, pending);
         when(foods.updateOwnedDetails(7L, "owner", "Corrected", null, BigDecimal.ONE, BigDecimal.TEN,
                 "Address", "Summary", "Story", "Ingredients", null, null, FoodReviewStatus.PENDING, null)).thenReturn(1);
-        for (String cache : new String[]{"foodDetails", "foodLists", "foodCatalogs", "foodMarkers", "wishlistMatchCatalog"}) {
+        for (String cache : new String[]{"foodDetails", "foodLists", "foodCatalogs", "foodMarkers"}) {
             caches.getCache(cache).put(7L, original);
         }
         assertEquals(FoodReviewStatus.PENDING, service.updateMine(7L, request(null), "owner").reviewStatus());
-        for (String cache : new String[]{"foodDetails", "foodLists", "foodCatalogs", "foodMarkers", "wishlistMatchCatalog"}) {
+        for (String cache : new String[]{"foodDetails", "foodLists", "foodCatalogs", "foodMarkers"}) {
             assertNull(caches.getCache(cache).get(7L), cache);
         }
         verify(foods, never()).updateLocationLabels(anyLong(), any(), any());

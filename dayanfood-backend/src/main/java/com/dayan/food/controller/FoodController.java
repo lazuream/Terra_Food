@@ -6,6 +6,7 @@ import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.entity.vo.FoodImportResultVO;
 import com.dayan.food.entity.vo.FoodMarkerVO;
 import com.dayan.food.entity.vo.FoodMapResultsVO;
+import com.dayan.food.entity.vo.FoodMapClustersVO;
 import com.dayan.food.service.FoodImportService;
 import com.dayan.food.service.FoodCreationService;
 import com.dayan.food.service.FoodService;
@@ -93,11 +94,12 @@ public class FoodController {
             @RequestParam(required = false) BigDecimal minLongitude,
             @RequestParam(required = false) BigDecimal maxLongitude,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "30") int pageSize
+            @RequestParam(defaultValue = "30") int pageSize,
+            @RequestParam(defaultValue = "false") boolean compact
     ) {
         return foodService.filteredCatalog(keyword, regionId, tasteIds, ingredientIds, cuisineIds,
                 sort, inBounds ? minLatitude : null, inBounds ? maxLatitude : null,
-                inBounds ? minLongitude : null, inBounds ? maxLongitude : null, page, pageSize);
+                inBounds ? minLongitude : null, inBounds ? maxLongitude : null, page, pageSize, compact);
     }
 
     @GetMapping("/map-results")
@@ -116,6 +118,32 @@ public class FoodController {
         return foodService.filteredMap(keyword, regionId, tasteIds, ingredientIds, cuisineIds, sort,
                 inBounds ? minLatitude : null, inBounds ? maxLatitude : null,
                 inBounds ? minLongitude : null, inBounds ? maxLongitude : null);
+    }
+
+    @GetMapping("/map-clusters")
+    public FoodMapClustersVO mapClusters(
+            @RequestParam(required = false) String keyword, @RequestParam(required = false) Long regionId,
+            @RequestParam(required = false) List<Long> tasteIds, @RequestParam(required = false) List<Long> ingredientIds,
+            @RequestParam(required = false) List<Long> cuisineIds,
+            @RequestParam BigDecimal minLatitude, @RequestParam BigDecimal maxLatitude,
+            @RequestParam BigDecimal minLongitude, @RequestParam BigDecimal maxLongitude,
+            @RequestParam(defaultValue = "4") int zoom) {
+        return foodService.mapClusters(keyword, regionId, tasteIds, ingredientIds, cuisineIds,
+                minLatitude, maxLatitude, minLongitude, maxLongitude, zoom);
+    }
+
+    @GetMapping("/map-clusters/{clusterId}/members")
+    public FoodCatalogVO mapClusterMembers(
+            @PathVariable String clusterId,
+            @RequestParam(required = false) String keyword, @RequestParam(required = false) Long regionId,
+            @RequestParam(required = false) List<Long> tasteIds, @RequestParam(required = false) List<Long> ingredientIds,
+            @RequestParam(required = false) List<Long> cuisineIds,
+            @RequestParam BigDecimal minLatitude, @RequestParam BigDecimal maxLatitude,
+            @RequestParam BigDecimal minLongitude, @RequestParam BigDecimal maxLongitude,
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int pageSize) {
+        if (!clusterId.matches("\\d+:\\d+:\\d+")) throw new IllegalArgumentException("无效的地图聚合标识");
+        return foodService.filteredCatalog(keyword, regionId, tasteIds, ingredientIds, cuisineIds,
+                "HEAT", minLatitude, maxLatitude, minLongitude, maxLongitude, page, Math.min(pageSize, 20), true);
     }
 
     @GetMapping("/{id}")

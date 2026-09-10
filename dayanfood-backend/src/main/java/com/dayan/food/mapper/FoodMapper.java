@@ -3,6 +3,7 @@ package com.dayan.food.mapper;
 import com.dayan.food.entity.po.Food;
 import com.dayan.food.entity.po.FoodMarker;
 import com.dayan.food.entity.po.FoodFootprint;
+import com.dayan.food.entity.po.FoodMapClusterRow;
 import com.dayan.food.entity.enums.FoodReviewStatus;
 import org.apache.ibatis.annotations.Param;
 
@@ -90,6 +91,14 @@ public interface FoodMapper {
             @Param("pageSize") int pageSize
     );
 
+    List<Food> findFilteredCatalogCards(
+            @Param("keyword") String keyword, @Param("tokens") List<String> tokens,
+            @Param("regionId") Long regionId, @Param("tasteIds") List<Long> tasteIds,
+            @Param("ingredientIds") List<Long> ingredientIds, @Param("cuisineIds") List<Long> cuisineIds,
+            @Param("minLatitude") java.math.BigDecimal minLatitude, @Param("maxLatitude") java.math.BigDecimal maxLatitude,
+            @Param("minLongitude") java.math.BigDecimal minLongitude, @Param("maxLongitude") java.math.BigDecimal maxLongitude,
+            @Param("sort") String sort, @Param("offset") int offset, @Param("pageSize") int pageSize);
+
     int countFilteredCatalog(
             @Param("tokens") List<String> tokens,
             @Param("regionId") Long regionId,
@@ -102,11 +111,19 @@ public interface FoodMapper {
             @Param("maxLongitude") java.math.BigDecimal maxLongitude
     );
 
+    List<FoodMapClusterRow> findMapClusters(
+            @Param("tokens") List<String> tokens, @Param("regionId") Long regionId,
+            @Param("tasteIds") List<Long> tasteIds, @Param("ingredientIds") List<Long> ingredientIds,
+            @Param("cuisineIds") List<Long> cuisineIds,
+            @Param("minLatitude") java.math.BigDecimal minLatitude, @Param("maxLatitude") java.math.BigDecimal maxLatitude,
+            @Param("minLongitude") java.math.BigDecimal minLongitude, @Param("maxLongitude") java.math.BigDecimal maxLongitude,
+            @Param("zoom") int zoom, @Param("limit") int limit);
+
     List<Food> findByCreatedBy(String username);
 
     List<Food> findApprovedByCreatedBy(@Param("username") String username, @Param("limit") int limit);
 
-    List<Food> findApprovedForMatching();
+    List<Food> findMatchingCandidates(@Param("tokens") List<String> tokens, @Param("limit") int limit);
 
     Food findOwnedById(@Param("id") Long id, @Param("username") String username);
 

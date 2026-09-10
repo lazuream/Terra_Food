@@ -5,6 +5,7 @@ import com.dayan.food.entity.vo.FavoriteStatusVO;
 import com.dayan.food.entity.vo.FoodVO;
 import com.dayan.food.entity.vo.WishlistItemVO;
 import com.dayan.food.entity.vo.WishlistStatusVO;
+import com.dayan.food.entity.vo.WishlistPageVO;
 import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.service.FavoriteService;
 import com.dayan.food.service.WishlistService;
@@ -64,6 +65,13 @@ public class CollectionController {
     @GetMapping("/wishlist")
     public List<WishlistItemVO> wishlist(Authentication authentication) {
         return wishlistService.list(authentication.getName());
+    }
+
+    @GetMapping("/wishlist/page")
+    public WishlistPageVO wishlistPage(@RequestParam(defaultValue="1") int page,
+                                       @RequestParam(defaultValue="20") int pageSize,
+                                       Authentication authentication) {
+        return wishlistService.page(authentication.getName(), page, pageSize);
     }
 
     @GetMapping("/wishlist/foods/{foodId}/status")

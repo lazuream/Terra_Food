@@ -3,13 +3,12 @@ package com.dayan.food.service.impl;
 import com.dayan.food.entity.enums.FoodReviewStatus;
 import com.dayan.food.entity.po.AppUser;
 import com.dayan.food.entity.po.WishlistItem;
-import com.dayan.food.entity.vo.FoodVO;
-import com.dayan.food.entity.vo.RegionVO;
+import com.dayan.food.entity.po.Food;
+import com.dayan.food.entity.po.Region;
 import com.dayan.food.entity.vo.WishlistItemVO;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FoodMapper;
 import com.dayan.food.mapper.WishlistMapper;
-import com.dayan.food.service.FoodService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,13 +36,12 @@ class WishlistServiceImplTests {
     @Mock private WishlistMapper wishlistMapper;
     @Mock private AppUserMapper appUserMapper;
     @Mock private FoodMapper foodMapper;
-    @Mock private FoodService foodService;
 
     private WishlistServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new WishlistServiceImpl(wishlistMapper, appUserMapper, foodMapper, foodService);
+        service = new WishlistServiceImpl(wishlistMapper, appUserMapper, foodMapper);
         AppUser user = activeUser();
         when(appUserMapper.findByUsername(USERNAME)).thenReturn(user);
     }
@@ -52,12 +51,15 @@ class WishlistServiceImplTests {
         WishlistItem item = mock(WishlistItem.class);
         when(item.getId()).thenReturn(12L);
         when(item.getContent()).thenReturn("想吃酸汤鱼");
+        when(item.getSourceFoodId()).thenReturn(null);
         when(item.getCreatedAt()).thenReturn(LocalDateTime.now());
         when(wishlistMapper.findByUserId(USER_ID)).thenReturn(List.of(item));
-        when(foodService.matchingCatalog()).thenReturn(List.of(
+        List<Food> candidates = List.of(
                 food(21L, "凯里酸汤鱼", "鱼、番茄、辣椒", "贵州", "凯里"),
                 food(22L, "北京烤鸭", "鸭肉", "北京", "北京")
-        ));
+        );
+        when(foodMapper.findMatchingCandidates(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq(200)))
+                .thenReturn(candidates);
 
         List<WishlistItemVO> result = service.list(USERNAME);
 
@@ -65,6 +67,15 @@ class WishlistServiceImplTests {
         assertEquals(1, result.getFirst().matches().size());
         assertEquals(21L, result.getFirst().matches().getFirst().food().id());
         assertTrue(result.getFirst().matches().getFirst().matchedFields().contains("NAME"));
+    }
+
+    @Test
+    void emptyListDoesNotQueryFoodCandidates() {
+        when(wishlistMapper.findByUserId(USER_ID)).thenReturn(List.of());
+
+        assertTrue(service.list(USERNAME).isEmpty());
+
+        verifyNoInteractions(foodMapper);
     }
 
     @Test
@@ -90,12 +101,15 @@ class WishlistServiceImplTests {
         return user;
     }
 
-    private static FoodVO food(Long id, String name, String ingredients, String province, String region) {
-        return new FoodVO(
-                id, name, new RegionVO(id, region, province, "", null, null),
-                BigDecimal.ZERO, BigDecimal.ZERO, "", name + "简介", "", ingredients,
-                null, null, 0, FoodReviewStatus.APPROVED, null, null, "author", null,
-                LocalDateTime.now()
-        );
+    private static Food food(Long id, String name, String ingredients, String province, String region) {
+        Food food = mock(Food.class); Region place = mock(Region.class);
+        when(food.getId()).thenReturn(id); when(food.getName()).thenReturn(name);
+        when(food.getIngredients()).thenReturn(ingredients); when(food.getSummary()).thenReturn(name + "简介");
+        when(food.getStory()).thenReturn(""); when(food.getAddress()).thenReturn("");
+        when(food.getLatitude()).thenReturn(BigDecimal.ZERO); when(food.getLongitude()).thenReturn(BigDecimal.ZERO);
+        when(food.getHeat()).thenReturn(0); when(food.getReviewStatus()).thenReturn(FoodReviewStatus.APPROVED);
+        when(food.getCreatedBy()).thenReturn("author"); when(food.getCreatedAt()).thenReturn(LocalDateTime.now());
+        when(place.getId()).thenReturn(id); when(place.getName()).thenReturn(region); when(place.getProvince()).thenReturn(province);
+        when(food.getRegion()).thenReturn(place); return food;
     }
 }

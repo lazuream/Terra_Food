@@ -144,6 +144,10 @@ public class FoodImportServiceImpl implements FoodImportService {
         cacheInvalidator.clear(cacheManager.getCache("foodLists"));
         cacheInvalidator.clear(cacheManager.getCache("foodCatalogs"));
         cacheInvalidator.clear(cacheManager.getCache("foodMarkers"));
+        cacheInvalidator.clear(cacheManager.getCache("foodDiscoveryCatalog"));
+        cacheInvalidator.clear(cacheManager.getCache("foodDiscoveryCounts"));
+        cacheInvalidator.clear(cacheManager.getCache("foodDiscoveryMap"));
+        cacheInvalidator.clear(cacheManager.getCache("wishlistMatches"));
         cacheInvalidator.clear(cacheManager.getCache("regions"));
         return new FoodImportResultVO(
                 totalRows,

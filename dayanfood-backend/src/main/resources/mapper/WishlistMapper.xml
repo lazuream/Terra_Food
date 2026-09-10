@@ -18,6 +18,15 @@
         FROM wishlist_item WHERE user_id = #{userId}
         ORDER BY created_at DESC, id DESC
     </select>
+    <select id="findPageByUserId" resultMap="wishlistResultMap">
+        SELECT id, user_id, content, normalized_content, source_food_id, created_at
+        FROM wishlist_item WHERE user_id = #{userId}
+        ORDER BY created_at DESC, id DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM wishlist_item WHERE user_id = #{userId}
+    </select>
     <select id="existsBySourceFood" resultType="int">
         SELECT COUNT(*) FROM wishlist_item
         WHERE user_id = #{userId} AND source_food_id = #{foodId}
