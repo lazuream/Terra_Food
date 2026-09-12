@@ -96,7 +96,6 @@ services:
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://host.docker.internal:8080}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
 
   agent-api:
@@ -120,7 +119,6 @@ services:
     depends_on:
       - agent-mcp
       - milvus
-    security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
 
 volumes:
