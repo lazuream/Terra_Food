@@ -1,7 +1,8 @@
 <template>
-  <div id="MusicControl" ref="playerRef">
-    <button v-if="!isPlayerVisible && currentMusic.src" class="reopen-btn" type="button" aria-label="打开音乐播放器" @click.stop="isPlayerVisible = true">♫</button>
-    <div v-if="isPlayerVisible && currentMusic.src" class="control-bar">
+  <div id="MusicControl" ref="playerRef" :style="playerStyle" @pointerdown="startDrag" @click.capture="suppressDraggedClick">
+    <button v-if="!isPlayerVisible && currentMusic.src" class="reopen-btn" type="button" title="打开音乐播放器" aria-label="打开音乐播放器" @click.stop="openPlayer">♫</button>
+    <div v-if="isPlayerVisible && currentMusic.src" class="control-bar" role="region" aria-label="音乐播放器">
+      <button class="minimize-btn" type="button" title="最小化播放器" aria-label="最小化播放器" @click.stop="minimizePlayer">−</button>
       <div class="player-content">
         <div class="song-info"><div class="title">{{ currentMusic.name }}</div><div class="artist">{{ currentMusic.artist || '未知艺人' }}</div></div>
         <div class="progress-container" @click="seekAudio"><div class="progress-bar" :style="{width: progress + '%'}"/><div class="time-display">{{ formatTime(currentTime) }} / {{ formatTime(duration) }}</div></div>
@@ -29,14 +30,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 type Track = { name: string; artist: string; src: string }
 type PlayMode = 'list' | 'random'
 const musicList = ref<Track[]>([]), currentIndex = ref(0), currentTime = ref(0), duration = ref(0)
-const volume = ref(0.35), isMuted = ref(false), isMusicPlaying = ref(false), isPlayerVisible = ref(true), showPlaylist = ref(false)
+const volume = ref(0.35), isMuted = ref(false), isMusicPlaying = ref(false), isPlayerVisible = ref(false), showPlaylist = ref(false)
 const playMode = ref<PlayMode>('list')
 const bgMusic = ref<HTMLAudioElement | null>(null), playerRef = ref<HTMLElement | null>(null)
+const route = useRoute()
+const draggedPosition = ref<{ left: number; top: number } | null>(null)
+const dragging = ref(false)
+const dragMoved = ref(false)
+const suppressClick = ref(false)
+const dragOffset = ref({ x: 0, y: 0 })
+const dragStart = ref({ x: 0, y: 0 })
 const currentMusic = computed(() => musicList.value[currentIndex.value] || { name: '', artist: '', src: '' })
+const playerStyle = computed(() => draggedPosition.value ? { left: `${draggedPosition.value.left}px`, top: `${draggedPosition.value.top}px`, right: 'auto', bottom: 'auto' } : undefined)
 const progress = computed(() => duration.value ? currentTime.value / duration.value * 100 : 0)
 const formatTime = (s: number) => Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00'
 async function playCurrent() { if (!bgMusic.value || !currentMusic.value.src) return; bgMusic.value.volume = volume.value; try { await bgMusic.value.play(); isMusicPlaying.value = true } catch { isMusicPlaying.value = false } }
@@ -73,10 +83,20 @@ function seekAudio(e: MouseEvent) { if (!bgMusic.value || !duration.value) retur
 function handleVolumeChange() { if (bgMusic.value) bgMusic.value.volume = volume.value; isMuted.value = volume.value === 0 }
 function toggleMute() { isMuted.value = !isMuted.value; if (bgMusic.value) bgMusic.value.muted = isMuted.value }
 function togglePlaylist() { showPlaylist.value = !showPlaylist.value }
+function minimizePlayer() { isPlayerVisible.value = false; showPlaylist.value = false; keepPlayerInBounds() }
+function openPlayer() { isPlayerVisible.value = true }
 function setPlayMode(mode: PlayMode) { playMode.value = mode; localStorage.setItem('background-music-play-mode', mode) }
 function outside(e: MouseEvent) { if (isPlayerVisible.value && playerRef.value && !playerRef.value.contains(e.target as Node)) { isPlayerVisible.value = false; showPlaylist.value = false } }
-onMounted(async () => { if (window.matchMedia('(max-width: 600px), (max-height: 500px)').matches) isPlayerVisible.value = false; const savedMode = localStorage.getItem('background-music-play-mode'); if (savedMode === 'list' || savedMode === 'random') playMode.value = savedMode; try { musicList.value = await (await fetch('/audio/music-manifest.json')).json(); await playCurrent() } catch { musicList.value = [] }; window.addEventListener('pointerdown', playCurrent, { once: true }); window.addEventListener('agent:music-switch', handleAgentMusicSwitch); document.addEventListener('click', outside) })
-onBeforeUnmount(() => { window.removeEventListener('pointerdown', playCurrent); window.removeEventListener('agent:music-switch', handleAgentMusicSwitch); document.removeEventListener('click', outside) })
+function startDrag(event: PointerEvent) { if (!playerRef.value) return; suppressClick.value = false; const rect = playerRef.value.getBoundingClientRect(); dragOffset.value = { x: event.clientX - rect.left, y: event.clientY - rect.top }; dragStart.value = { x: event.clientX, y: event.clientY }; dragging.value = false; dragMoved.value = false; window.addEventListener('pointermove', moveDrag); window.addEventListener('pointerup', stopDrag, { once: true }) }
+function moveDrag(event: PointerEvent) { if (!playerRef.value) return; const distance = Math.hypot(event.clientX - dragStart.value.x, event.clientY - dragStart.value.y); if (!dragging.value && distance < 4) return; if (!dragging.value) { dragging.value = true; dragMoved.value = true; suppressClick.value = true }; const rect = playerRef.value.getBoundingClientRect(); draggedPosition.value = { left: Math.max(8, Math.min(window.innerWidth - rect.width - 8, event.clientX - dragOffset.value.x)), top: Math.max(8, Math.min(window.innerHeight - rect.height - 8, event.clientY - dragOffset.value.y)) }; event.preventDefault() }
+function stopDrag() { if (!dragMoved.value) suppressClick.value = false; dragging.value = false; dragMoved.value = false; window.removeEventListener('pointermove', moveDrag) }
+function suppressDraggedClick(event: MouseEvent) { if (!suppressClick.value) return; event.preventDefault(); event.stopPropagation(); suppressClick.value = false }
+async function keepPlayerInBounds() { await nextTick(); if (!playerRef.value) return; const rect = playerRef.value.getBoundingClientRect(); const left = Math.max(8, Math.min(window.innerWidth - rect.width - 8, rect.left)); const top = Math.max(8, Math.min(window.innerHeight - rect.height - 8, rect.top)); if (Math.abs(left - rect.left) > 1 || Math.abs(top - rect.top) > 1) draggedPosition.value = { left, top } }
+watch(() => route.fullPath, () => minimizePlayer())
+watch(isPlayerVisible, visible => { if (visible) keepPlayerInBounds() })
+onMounted(async () => { const savedMode = localStorage.getItem('background-music-play-mode'); if (savedMode === 'list' || savedMode === 'random') playMode.value = savedMode; try { musicList.value = await (await fetch('/audio/music-manifest.json')).json(); await playCurrent() } catch { musicList.value = [] }; window.addEventListener('pointerdown', playCurrent, { once: true }); document.addEventListener('click', outside) })
+onMounted(() => window.addEventListener('resize', keepPlayerInBounds))
+onBeforeUnmount(() => { window.removeEventListener('pointerdown', playCurrent); window.removeEventListener('pointermove', moveDrag); window.removeEventListener('resize', keepPlayerInBounds); document.removeEventListener('click', outside) })
 </script>
 
 <style scoped>
