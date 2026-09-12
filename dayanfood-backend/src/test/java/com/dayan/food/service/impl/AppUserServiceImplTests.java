@@ -72,12 +72,12 @@ class AppUserServiceImplTests {
         when(userReviewItemMapper.findPendingByUserAndField(2L, ReviewField.SIGNATURE))
                 .thenReturn(item(5L, ReviewField.SIGNATURE, "", "新签名"));
         when(appUserMapper.updateSignature(2L, "新签名")).thenReturn(1);
-        when(userReviewItemMapper.approveItem(5L, "admin")).thenReturn(1);
+        when(userReviewItemMapper.approveItem(5L, 0L, "admin")).thenReturn(1);
 
-        service.reviewItem(2L, ReviewField.SIGNATURE, ReviewStatus.APPROVED, "admin");
+        service.reviewItem(2L, ReviewField.SIGNATURE, ReviewStatus.APPROVED, 0L, "admin");
 
         verify(appUserMapper).updateSignature(2L, "新签名");
-        verify(userReviewItemMapper).approveItem(5L, "admin");
+        verify(userReviewItemMapper).approveItem(5L, 0L, "admin");
     }
 
     @Test
@@ -91,11 +91,11 @@ class AppUserServiceImplTests {
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.reviewItem(2L, ReviewField.DISPLAY_NAME, ReviewStatus.APPROVED, "admin")
+                () -> service.reviewItem(2L, ReviewField.DISPLAY_NAME, ReviewStatus.APPROVED, 0L, "admin")
         );
 
         verify(appUserMapper, never()).updateDisplayName(2L, "美食家");
-        verify(userReviewItemMapper, never()).approveItem(6L, "admin");
+        verify(userReviewItemMapper, never()).approveItem(6L, 0L, "admin");
     }
 
     @Test
@@ -105,12 +105,12 @@ class AppUserServiceImplTests {
         when(userReviewItemMapper.findPendingByUserAndField(2L, ReviewField.DISPLAY_NAME))
                 .thenReturn(item(6L, ReviewField.DISPLAY_NAME, "user", "美食家"));
         when(appUserMapper.updateDisplayName(2L, "美食家")).thenReturn(1);
-        when(userReviewItemMapper.approveItem(6L, "admin")).thenReturn(1);
+        when(userReviewItemMapper.approveItem(6L, 0L, "admin")).thenReturn(1);
 
-        service.reviewItem(2L, ReviewField.DISPLAY_NAME, ReviewStatus.APPROVED, "admin");
+        service.reviewItem(2L, ReviewField.DISPLAY_NAME, ReviewStatus.APPROVED, 0L, "admin");
 
         verify(appUserMapper).updateDisplayName(2L, "美食家");
-        verify(userReviewItemMapper).approveItem(6L, "admin");
+        verify(userReviewItemMapper).approveItem(6L, 0L, "admin");
     }
 
     @Test
@@ -119,23 +119,23 @@ class AppUserServiceImplTests {
         when(appUserMapper.findById(2L)).thenReturn(user(2L, "user", UserRole.USER));
         when(userReviewItemMapper.findPendingByUserAndField(2L, ReviewField.SIGNATURE))
                 .thenReturn(item(5L, ReviewField.SIGNATURE, "旧签名", "新签名"));
-        when(userReviewItemMapper.rejectItem(5L, "admin")).thenReturn(1);
+        when(userReviewItemMapper.rejectItem(5L, 0L, "admin")).thenReturn(1);
 
-        service.reviewItem(2L, ReviewField.SIGNATURE, ReviewStatus.REJECTED, "admin");
+        service.reviewItem(2L, ReviewField.SIGNATURE, ReviewStatus.REJECTED, 0L, "admin");
 
         verify(appUserMapper, never()).updateSignature(2L, "新签名");
-        verify(userReviewItemMapper).rejectItem(5L, "admin");
+        verify(userReviewItemMapper).rejectItem(5L, 0L, "admin");
     }
 
     @Test
     void reviewItemRejectsInvalidStatus() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.reviewItem(2L, ReviewField.SIGNATURE, ReviewStatus.PENDING, "admin")
+                () -> service.reviewItem(2L, ReviewField.SIGNATURE, ReviewStatus.PENDING, 0L, "admin")
         );
 
-        verify(userReviewItemMapper, never()).approveItem(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
-        verify(userReviewItemMapper, never()).rejectItem(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
+        verify(userReviewItemMapper, never()).approveItem(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
+        verify(userReviewItemMapper, never()).rejectItem(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
     }
 
     @Test
@@ -145,11 +145,11 @@ class AppUserServiceImplTests {
         when(userReviewItemMapper.findPendingByUserAndField(2L, ReviewField.SIGNATURE))
                 .thenReturn(item(5L, ReviewField.SIGNATURE, "", "新签名"));
         when(appUserMapper.updateSignature(2L, "新签名")).thenReturn(1);
-        when(userReviewItemMapper.approveItem(5L, "admin")).thenReturn(0);
+        when(userReviewItemMapper.approveItem(5L, 0L, "admin")).thenReturn(0);
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.reviewItem(2L, ReviewField.SIGNATURE, ReviewStatus.APPROVED, "admin")
+                () -> service.reviewItem(2L, ReviewField.SIGNATURE, ReviewStatus.APPROVED, 0L, "admin")
         );
     }
 
@@ -162,10 +162,10 @@ class AppUserServiceImplTests {
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> service.reviewItem(2L, ReviewField.SEAL, ReviewStatus.APPROVED, "admin")
+                () -> service.reviewItem(2L, ReviewField.SEAL, ReviewStatus.APPROVED, 0L, "admin")
         );
 
-        verify(userReviewItemMapper, never()).approveItem(8L, "admin");
+        verify(userReviewItemMapper, never()).approveItem(8L, 0L, "admin");
     }
 
     @Test
@@ -223,6 +223,7 @@ class AppUserServiceImplTests {
         ReflectionTestUtils.setField(item, "field", field);
         ReflectionTestUtils.setField(item, "currentValue", currentValue);
         ReflectionTestUtils.setField(item, "pendingValue", pendingValue);
+        ReflectionTestUtils.setField(item, "version", 0L);
         return item;
     }
 }

@@ -3,6 +3,7 @@ package com.dayan.food.service.impl;
 import com.dayan.food.entity.po.AppUser;
 import com.dayan.food.entity.po.FoodComment;
 import com.dayan.food.entity.vo.FoodCommentVO;
+import com.dayan.food.entity.vo.FoodCommentPageVO;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FoodCommentMapper;
 import com.dayan.food.mapper.FoodMapper;
@@ -38,6 +39,15 @@ public class FoodCommentServiceImpl implements FoodCommentService {
         return foodCommentMapper.findByFoodId(foodId).stream()
                 .map(FoodCommentVO::from)
                 .toList();
+    }
+
+    @Override @Transactional(readOnly = true)
+    public FoodCommentPageVO page(Long foodId, int page, int pageSize) {
+        requireApprovedFood(foodId);
+        int size=Math.min(Math.max(pageSize,1),50); int total=foodCommentMapper.countByFoodId(foodId);
+        int pages=Math.max(1,(int)Math.ceil((double)total/size)); int normalized=Math.min(Math.max(page,1),pages);
+        var items=foodCommentMapper.findPageByFoodId(foodId,(normalized-1)*size,size).stream().map(FoodCommentVO::from).toList();
+        return new FoodCommentPageVO(items,total,normalized,size);
     }
 
     @Override

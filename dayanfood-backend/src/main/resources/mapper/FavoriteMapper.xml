@@ -19,4 +19,16 @@
         WHERE favorite.user_id = #{userId}
         ORDER BY favorite.created_at DESC
     </select>
+    <select id="findPageByUserId" resultMap="com.dayan.food.mapper.FoodMapper.foodResultMap">
+        SELECT <include refid="com.dayan.food.mapper.FoodMapper.foodColumns"/>
+        FROM food_favorite favorite
+        INNER JOIN food f ON f.id = favorite.food_id AND f.review_status = 'APPROVED'
+        LEFT JOIN region r ON r.id = f.region_id
+        WHERE favorite.user_id = #{userId}
+        ORDER BY favorite.created_at DESC, f.id DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*) FROM food_favorite favorite INNER JOIN food f ON f.id=favorite.food_id AND f.review_status='APPROVED' WHERE favorite.user_id=#{userId}
+    </select>
 </mapper>

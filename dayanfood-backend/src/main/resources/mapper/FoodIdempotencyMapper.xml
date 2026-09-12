@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dayan.food.mapper.FoodIdempotencyMapper">
+ <resultMap id="idempotency" type="com.dayan.food.entity.po.FoodCreateIdempotency">
+  <id property="userId" column="user_id"/><id property="key" column="idem_key"/>
+  <result property="requestHash" column="request_hash"/><result property="foodId" column="food_id"/>
+  <result property="createdAt" column="created_at"/><result property="expiresAt" column="expires_at"/>
+ </resultMap>
+ <select id="find" resultMap="idempotency">SELECT user_id,idem_key,request_hash,food_id,created_at,expires_at FROM food_create_idempotency WHERE user_id=#{userId} AND idem_key=#{key} FOR UPDATE</select>
+ <delete id="deleteExpired">DELETE FROM food_create_idempotency WHERE user_id=#{userId} AND idem_key=#{key} AND expires_at &lt;= #{now}</delete>
+ <insert id="insertReservation">INSERT INTO food_create_idempotency(user_id,idem_key,request_hash,expires_at) VALUES(#{userId},#{key},#{requestHash},#{expiresAt})</insert>
+ <update id="attachFood">UPDATE food_create_idempotency SET food_id=#{foodId} WHERE user_id=#{userId} AND idem_key=#{key} AND food_id IS NULL</update>
+</mapper>

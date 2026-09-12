@@ -1,24 +1,37 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
-import { addWishlistItem, deleteEtching, deleteWishlistItem, getAchievements, getMyEtchings, getMyFavorites, getMyFoods, getMyFootprints, getMyWishlist, getRegions, removeFavorite, selectAchievement, selectEtching, updateAvatar, updateMyDisplayName, updateMySignature, uploadImage } from '../api'
+import { addWishlistItem, deleteEtching, deleteMyCheckin, deleteWishlistItem, getAchievements, getMyEtchings, getMyFavoritesPage, getMyFoods, getMyFootprints, getMyCheckins, getMyWishlistPage, getRegions, removeFavorite, selectAchievement, selectEtching, updateAvatar, updateMyCheckin, updateMyDisplayName, updateMySignature, uploadImage } from '../api'
 import { useAuth } from '../auth'
 import { apiErrorMessage } from '../apiError'
-import FoodEditModal from '../components/FoodEditModal.vue'
-import EtchingStudio from '../components/EtchingStudio.vue'
+const FoodEditModal = defineAsyncComponent(() => import('../components/FoodEditModal.vue'))
+const EtchingStudio = defineAsyncComponent(() => import('../components/EtchingStudio.vue'))
 import HexEtching from '../components/HexEtching.vue'
-import type { Achievement, EtchingDesign, Food, FoodFootprint, FoodReviewStatus, Region, SignatureStatus, WishlistItem, WishlistMatchField } from '../types'
+import type { Achievement, EtchingDesign, Food, FoodCheckin, FoodFootprint, FoodReviewStatus, Region, SignatureStatus, WishlistItem, WishlistMatchField } from '../types'
 
 const { locale, t } = useI18n()
 const route = useRoute()
 const auth = useAuth()
 const foods = ref<Food[]>([])
 const footprints = ref<FoodFootprint[]>([])
+const checkins = ref<FoodCheckin[]>([])
+const checkinPage = ref(1)
+const checkinTotal = ref(0)
+const checkinLoadingMore = ref(false)
+const checkinEditing = ref<number>()
+const checkinSaving = ref<number>()
+const checkinError = ref('')
+const checkinDraft = ref({ eatenOn: '', note: '', visibility: 'PUBLIC' as 'PUBLIC' | 'PRIVATE', version: 0 })
 const favorites = ref<Food[]>([])
 const wishlist = ref<WishlistItem[]>([])
+const favoritesTotal = ref(0)
+const wishlistTotal = ref(0)
+const favoritesPage = ref(1)
+const wishlistPage = ref(1)
+const collectionsLoading = ref(false)
 const collectionTab = ref<'favorites' | 'wishlist'>(route.query.tab === 'wishlist' ? 'wishlist' : 'favorites')
 const wishlistDraft = ref('')
 const wishlistSaving = ref(false)
@@ -84,6 +97,45 @@ function matchReason(fields: WishlistMatchField[]) {
   return fields.map((field) => t(`profile.matchField.${field.toLowerCase()}`)).join(' · ')
 }
 
+function editCheckin(item: FoodCheckin) {
+  checkinEditing.value = item.id
+  checkinError.value = ''
+  checkinDraft.value = { eatenOn: item.eatenOn, note: item.note || '', visibility: item.visibility, version: item.version }
+}
+
+async function saveCheckin(item: FoodCheckin) {
+  checkinSaving.value = item.id
+  checkinError.value = ''
+  try {
+    const updated = await updateMyCheckin(item.id, { ...checkinDraft.value, note: checkinDraft.value.note.trim() || undefined, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' })
+    checkins.value = checkins.value.map((candidate) => candidate.id === updated.id ? updated : candidate)
+    checkinEditing.value = undefined
+  } catch (cause) { checkinError.value = apiErrorMessage(cause, '打卡修改失败，请刷新后重试。') }
+  finally { checkinSaving.value = undefined }
+}
+
+async function removeCheckin(item: FoodCheckin) {
+  if (!window.confirm(`删除“${item.foodName}”的这次打卡？`)) return
+  checkinSaving.value = item.id
+  checkinError.value = ''
+  try { await deleteMyCheckin(item.id, item.version); checkins.value = checkins.value.filter((candidate) => candidate.id !== item.id) }
+  catch (cause) { checkinError.value = apiErrorMessage(cause, '打卡删除失败，请重试。') }
+  finally { checkinSaving.value = undefined }
+}
+
+async function loadMoreCheckins() {
+  if (checkinLoadingMore.value || checkins.value.length >= checkinTotal.value) return
+  checkinLoadingMore.value = true
+  checkinError.value = ''
+  try {
+    const result = await getMyCheckins(checkinPage.value + 1)
+    checkinPage.value = result.page
+    checkinTotal.value = result.total
+    checkins.value.push(...result.items.filter((item) => !checkins.value.some((existing) => existing.id === item.id)))
+  } catch (cause) { checkinError.value = apiErrorMessage(cause, '打卡加载失败，请重试。') }
+  finally { checkinLoadingMore.value = false }
+}
+
 async function createWishlistItem() {
   const content = wishlistDraft.value.trim()
   if (content.length < 2) {
@@ -95,6 +147,7 @@ async function createWishlistItem() {
   try {
     const created = await addWishlistItem({ content })
     wishlist.value.unshift(created)
+    wishlistTotal.value += 1
     wishlistDraft.value = ''
   } catch (requestError) {
     collectionError.value = axios.isAxiosError(requestError)
@@ -112,6 +165,7 @@ async function removeFavoriteItem(food: Food) {
   try {
     await removeFavorite(food.id)
     favorites.value = favorites.value.filter((item) => item.id !== food.id)
+    favoritesTotal.value = Math.max(0, favoritesTotal.value - 1)
   } catch {
     collectionError.value = t('profile.collectionError')
   } finally {
@@ -126,6 +180,7 @@ async function removeWishlistItem(item: WishlistItem) {
   try {
     await deleteWishlistItem(item.id)
     wishlist.value = wishlist.value.filter((candidate) => candidate.id !== item.id)
+    wishlistTotal.value = Math.max(0, wishlistTotal.value - 1)
   } catch {
     collectionError.value = t('profile.collectionError')
   } finally {
@@ -157,9 +212,11 @@ async function saveSignature() {
 
   signatureSaving.value = true
   signatureError.value = ''
+  const revision = auth.getSessionRevision()
+  const userId = user.value?.id
   try {
     const updatedUser = await updateMySignature(draft)
-    auth.setCurrentUser(updatedUser)
+    if (!auth.setCurrentUser(updatedUser, revision, userId)) return
     signatureEditing.value = false
   } catch (requestError) {
     signatureError.value = axios.isAxiosError(requestError)
@@ -185,9 +242,11 @@ async function saveDisplayName() {
 
   displayNameSaving.value = true
   displayNameError.value = ''
+  const revision = auth.getSessionRevision()
+  const userId = user.value?.id
   try {
     const updatedUser = await updateMyDisplayName(draft)
-    auth.setCurrentUser(updatedUser)
+    if (!auth.setCurrentUser(updatedUser, revision, userId)) return
     displayNameEditing.value = false
   } catch (requestError) {
     displayNameError.value = axios.isAxiosError(requestError)
@@ -254,10 +313,13 @@ async function changeAvatar(event: Event) {
 
   avatarSaving.value = true
   avatarError.value = ''
+  const revision = auth.getSessionRevision()
+  const userId = user.value?.id
   try {
     const avatarUrl = await uploadImage(file)
+    if (revision !== auth.getSessionRevision() || userId !== user.value?.id) return
     const updatedUser = await updateAvatar(avatarUrl)
-    auth.setCurrentUser(updatedUser)
+    auth.setCurrentUser(updatedUser, revision, userId)
   } catch {
     avatarError.value = t('profile.avatarError')
   } finally {
@@ -287,11 +349,15 @@ async function loadProfile() {
     await Promise.all([
       section('foods', async () => { foods.value = await getMyFoods() }),
       section('footprints', async () => { footprints.value = await getMyFootprints() }),
+      section('checkins', async () => {
+        const result = await getMyCheckins()
+        checkins.value = result.items
+        checkinPage.value = result.page
+        checkinTotal.value = result.total
+      }),
       section('regions', async () => { regions.value = await getRegions() }),
       section('achievements', async () => { achievements.value = await getAchievements() }),
       section('etchings', async () => { etchings.value = await getMyEtchings() }),
-      section('favorites', async () => { favorites.value = await getMyFavorites() }),
-      section('wishlist', async () => { wishlist.value = await getMyWishlist() }),
     ])
   } finally {
     loading.value = false
@@ -299,6 +365,33 @@ async function loadProfile() {
   }
 }
 onMounted(loadProfile)
+
+async function loadCurrentCollection(reset = true) {
+  if (collectionsLoading.value) return
+  collectionsLoading.value = true
+  collectionError.value = ''
+  try {
+    if (collectionTab.value === 'favorites') {
+      const page = reset ? 1 : favoritesPage.value + 1
+      const result = await getMyFavoritesPage(page, 20)
+      favorites.value = reset ? result.items : [...favorites.value, ...result.items]
+      favoritesPage.value = result.page
+      favoritesTotal.value = result.total
+    } else {
+      const page = reset ? 1 : wishlistPage.value + 1
+      const result = await getMyWishlistPage(page, 20)
+      wishlist.value = reset ? result.items : [...wishlist.value, ...result.items]
+      wishlistPage.value = result.page
+      wishlistTotal.value = result.total
+    }
+  } catch (cause) {
+    collectionError.value = apiErrorMessage(cause, t('profile.loadError'))
+  } finally {
+    collectionsLoading.value = false
+  }
+}
+
+watch(collectionTab, () => { void loadCurrentCollection(true) }, { immediate: true })
 
 </script>
 
@@ -426,7 +519,7 @@ onMounted(loadProfile)
           :class="{ active: collectionTab === 'favorites' }"
           @click="collectionTab = 'favorites'"
         >
-          {{ t('profile.favoritesTab') }} <span>{{ favorites.length }}</span>
+          {{ t('profile.favoritesTab') }} <span>{{ favoritesTotal }}</span>
         </button>
         <button
           type="button"
@@ -435,7 +528,7 @@ onMounted(loadProfile)
           :class="{ active: collectionTab === 'wishlist' }"
           @click="collectionTab = 'wishlist'"
         >
-          {{ t('profile.wishlistTab') }} <span>{{ wishlist.length }}</span>
+          {{ t('profile.wishlistTab') }} <span>{{ wishlistTotal }}</span>
         </button>
       </div>
 
@@ -462,6 +555,7 @@ onMounted(loadProfile)
           <p>{{ t('profile.favoriteEmpty') }}</p>
           <RouterLink to="/">{{ t('profile.browseFoods') }}</RouterLink>
         </div>
+        <button v-if="favorites.length < favoritesTotal" type="button" :disabled="collectionsLoading" @click="loadCurrentCollection(false)">{{ t('home.loadMoreFavorites') }}</button>
       </template>
 
       <template v-else>
@@ -492,9 +586,9 @@ onMounted(loadProfile)
                 @click="removeWishlistItem(item)"
               >{{ t('profile.wishlistDelete') }}</button>
             </header>
-            <div v-if="item.matches.length" class="wishlist-matches">
+            <div v-if="item.matches?.length" class="wishlist-matches">
               <strong>{{ t('profile.wishlistMatchTitle') }}</strong>
-              <RouterLink v-for="match in item.matches" :key="match.food.id" :to="`/foods/${match.food.id}`">
+              <RouterLink v-for="match in item.matches || []" :key="match.food.id" :to="`/foods/${match.food.id}`">
                 <img v-if="match.food.imageUrl" :src="match.food.imageUrl" :alt="match.food.name">
                 <span v-else class="wishlist-match-fallback">{{ match.food.name.slice(0, 1) }}</span>
                 <span>
@@ -509,7 +603,29 @@ onMounted(loadProfile)
           </article>
         </div>
         <div v-else-if="!loading && !loadFailures.includes('wishlist')" class="collection-empty"><p>{{ t('profile.wishlistEmpty') }}</p></div>
+        <button v-if="wishlist.length < wishlistTotal" type="button" :disabled="collectionsLoading" @click="loadCurrentCollection(false)">{{ t('home.loadMoreFavorites') }}</button>
       </template>
+    </section>
+
+    <section class="collection-panel checkin-panel">
+      <div class="collection-heading"><div><small>味觉日记</small><h2>我的打卡</h2></div><p>记录真正吃过的珍馐，公开或仅自己可见。</p></div>
+      <div v-if="checkins.length" class="checkin-list">
+        <article v-for="item in checkins" :key="item.id" class="wishlist-card">
+          <header><div><h3>{{ item.foodName }}</h3><time>{{ item.eatenOn }}</time></div><span>{{ item.visibility === 'PRIVATE' ? '仅自己可见' : '公开' }}</span></header>
+          <form v-if="checkinEditing === item.id" class="checkin-edit-form" @submit.prevent="saveCheckin(item)">
+            <input v-model="checkinDraft.eatenOn" type="date" required>
+            <select v-model="checkinDraft.visibility"><option value="PUBLIC">公开</option><option value="PRIVATE">仅自己可见</option></select>
+            <textarea v-model="checkinDraft.note" maxlength="500" placeholder="这次有什么新的味觉记忆？"></textarea>
+            <div><button :disabled="checkinSaving === item.id">保存</button><button type="button" @click="checkinEditing = undefined">取消</button></div>
+          </form>
+          <template v-else><p v-if="item.note">{{ item.note }}</p><div class="checkin-actions"><button type="button" @click="editCheckin(item)">编辑</button><button type="button" :disabled="checkinSaving === item.id" @click="removeCheckin(item)">删除</button></div></template>
+        </article>
+      </div>
+      <p v-if="checkinError" class="collection-error">{{ checkinError }}</p>
+      <button v-if="checkins.length < checkinTotal" type="button" :disabled="checkinLoadingMore" @click="loadMoreCheckins">
+        {{ checkinLoadingMore ? '加载中…' : '加载更多' }}
+      </button>
+      <p v-else-if="!checkins.length && !loading && !loadFailures.includes('checkins')" class="collection-empty">还没有打卡，去菜品详情记录第一次体验吧。</p>
     </section>
 
     <section class="profile-layout">

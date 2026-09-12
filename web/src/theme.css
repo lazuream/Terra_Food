@@ -1,0 +1,122 @@
+/* Final compatibility layer while legacy page styles move to semantic tokens. */
+html[data-theme='dark'] body,
+html[data-theme='dark'] .login-page,
+html[data-theme='dark'] .admin-page,
+html[data-theme='dark'] .profile-page,
+html[data-theme='dark'] .detail {
+  color: var(--color-ink);
+  background-color: var(--color-bg);
+}
+
+html[data-theme='dark'] main :is(h1, h2, h3, h4, p, label, legend, dt, dd, li, span, strong, small, time) {
+  color: inherit;
+}
+
+html[data-theme='dark'] :is(
+  .login-panel,
+  .admin-stats article,
+  .admin-table-card,
+  .admin-detail-modal,
+  .profile-hero,
+  .etching-panel,
+  .profile-foods,
+  .profile-section,
+  .comment-section,
+  .comment-card,
+  .comment-form,
+  .upload-modal,
+  .region-drawer,
+  .agent-panel,
+  .agent-message,
+  .agent-comment-draft,
+  .wishlist-card,
+  .wishlist-form,
+  .custom-etching-item
+) {
+  color: var(--color-ink);
+  background: var(--surface-strong);
+  border-color: var(--border-paper);
+  box-shadow: var(--shadow-card);
+}
+
+html[data-theme='dark'] :is(
+  .explorer-panel,
+  .explorer-filters,
+  .catalog-card,
+  .region-select-trigger,
+  .cover-pick,
+  .search-result-grid button,
+  .province-panel > button,
+  .city-grid button,
+  .admin-page-button,
+  .admin-page-size select,
+  .wishlist-matches a
+) {
+  color: var(--color-ink);
+  background: #29221de8;
+  border-color: var(--border-paper);
+}
+
+html[data-theme='dark'] :is(input, textarea, select) {
+  color: var(--color-ink);
+  background: var(--color-input);
+  border-color: var(--border-paper);
+}
+
+html[data-theme='dark'] :is(.login-form label, .captcha-block, .login-heading, .auth-mode-tabs) {
+  color: var(--color-ink);
+}
+
+html[data-theme='dark'] :is(button, .secondary-button, .account-link) {
+  border-color: var(--border-paper);
+}
+
+html[data-theme='dark'] :is(.form-error, .agent-error, .collection-action-error) {
+  color: #ffb5a9;
+  background: #4a211f;
+}
+
+html[data-theme='dark'] :is(.form-success, .review-status.is-approved) {
+  color: #b9deb0;
+  background: #223a25;
+}
+
+html[data-theme='dark'] body:has(main > .map-explorer) > #app > header {
+  background: #211b18e8;
+  border-bottom: 1px solid var(--border-paper);
+  box-shadow: 0 16px 45px #0008;
+}
+
+html[data-theme='dark'] .explorer-map-wash {
+  background: linear-gradient(90deg, #120d0b52, transparent 30%, transparent 70%, #120d0b52);
+}
+
+/* Maps and exported share cards deliberately keep their own fixed palette. */
+html[data-theme='dark'] .food-share-card,
+html[data-theme='dark'] .food-share-card * {
+  color: initial;
+}
+
+@media (max-width: 700px) {
+  .auth-page .login-art {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 11px;
+    min-height: 72px;
+    padding: 10px 18px;
+  }
+
+  .auth-page .login-art::after { inset: 10px; }
+  .auth-page .login-seal { flex: 0 0 36px; width: 36px; height: 36px; margin: 0; font-size: 22px; }
+  .auth-page .login-art > p { display: none; }
+  .auth-page .login-art h1 { margin: 0; font-size: 23px; }
+  .auth-page .login-panel { justify-content: flex-start; padding: 12px 18px 18px; }
+  .auth-page .auth-mode-tabs { margin-bottom: 6px; }
+  .auth-page .register-compact-form { gap: 5px; }
+  .auth-page .register-compact-form .login-heading h2 { margin: 2px 0 3px; font-size: 24px; }
+  .auth-page .register-compact-form label { gap: 2px; }
+  .auth-page .register-compact-form input { padding: 6px 9px; }
+  .auth-page .register-compact-form .captcha-block { gap: 3px; }
+  .auth-page .register-compact-form .login-submit { margin-top: 0; padding: 8px; }
+}

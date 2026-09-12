@@ -1,0 +1,5 @@
+CONTAINER ID   NAME                                CPU %     MEM USAGE / LIMIT   MEM %     NET I/O           BLOCK I/O        PIDS
+1642d867d709   terrafood-perf-20260910-backend-1   0.85%     286.7MiB / 768MiB   37.34%    2.56MB / 301kB    5.04MB / 172kB   112
+4fa718f38bcb   terrafood-perf-20260910-mysql-1     1.38%     643.7MiB / 768MiB   83.81%    650kB / 2.94MB    285MB / 866MB    50
+21bf3a998ef9   terrafood-perf-20260910-redis-1     1.29%     4.008MiB / 128MiB   3.13%     1.55MB / 14.6MB   102kB / 0B       6
+edb97998899d   terrafood-perf-20260910-web-1       0.00%     4.668MiB / 64MiB    7.29%     448kB / 2.61MB    4.1kB / 4.1kB    5

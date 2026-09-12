@@ -21,7 +21,7 @@ public interface AppUserService {
 
     AuthUserVO submitDisplayName(String username, String displayName);
 
-    void reviewItem(Long userId, ReviewField field, ReviewStatus status, String operatorUsername);
+    void reviewItem(Long userId, ReviewField field, ReviewStatus status, long expectedVersion, String operatorUsername);
 
     void setActive(Long id, boolean active, String operatorUsername);
 

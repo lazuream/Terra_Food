@@ -32,8 +32,7 @@ public class SecurityConfig {
             ActiveSessionFilter activeSessionFilter
     ) throws Exception {
         return http
-                // 当前前后端通过同源 Vite 代理访问；API 使用 Session，但不依赖表单 CSRF token。
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/internal/agent/**"))
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
@@ -43,12 +42,13 @@ public class SecurityConfig {
                                 "/api/auth/registration-code",
                                 "/api/auth/password-reset-code",
                                 "/api/auth/password-reset",
+                                "/api/auth/csrf",
                                 "/api/internal/agent/**",
                                 "/uploads/**",
                                 "/error"
                         )
                         .permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/foods/**", "/api/regions/**", "/api/users/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/foods/**", "/api/regions/**", "/api/users/**", "/api/food-tags/**").permitAll()
                         // 角色授予只能由主管理员执行，必须放在后台通配规则之前。
                         .requestMatchers(HttpMethod.PATCH, "/api/admin/users/*/role").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/foods/**")

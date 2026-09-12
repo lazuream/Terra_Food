@@ -41,9 +41,11 @@ export interface Food {
   story: string
   ingredients: string
   imageUrl?: string
+  imageVariants?: { small?: string; medium?: string; large?: string }
   remark?: string
   heat: number
   reviewStatus: FoodReviewStatus
+  contentVersion: number
   reviewedBy?: string
   reviewedAt?: string
   createdBy: string
@@ -57,11 +59,44 @@ export interface FoodComment {
   author: UserSummary
   content: string
   createdAt: string
+  checkinId?: number
+  eatenOn?: string
 }
+
+export interface PagedComments { items: FoodComment[]; total: number; page: number; pageSize: number }
 
 export interface FoodCommentCreatePayload {
   content: string
 }
+
+export interface FoodCheckin {
+  id: number
+  foodId: number | null
+  foodName: string
+  eatenOn: string
+  note?: string
+  visibility: 'PUBLIC' | 'PRIVATE'
+  timezone: string
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PagedCheckins { items: FoodCheckin[]; total: number; page: number; pageSize: number }
+
+export interface FoodTag {
+  id: number
+  type: 'TASTE' | 'INGREDIENT' | 'CUISINE'
+  name: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'MERGED' | 'DISABLED'
+  mergedIntoId?: number
+  version: number
+  createdBy?: number
+  createdAt: string
+  reviewedAt?: string
+}
+export interface PagedFoodTags { items: FoodTag[]; total: number; page: number; pageSize: number }
+export interface FoodTagAdminPayload { type: FoodTag['type']; name: string; status: FoodTag['status']; reason?: string; version: number }
 
 export interface FoodFootprint {
   food: Food
@@ -121,6 +156,35 @@ export interface PagedCatalog {
   page: number
   pageSize: number
 }
+
+export interface FoodMapResults {
+  items: FoodMarker[]
+  total: number
+  truncated: boolean
+}
+
+export interface FoodMapClusterItem {
+  id: string
+  kind: 'POINT' | 'CLUSTER'
+  count: number
+  foodId?: number
+  name?: string
+  latitude: number
+  longitude: number
+  minLatitude: number
+  maxLatitude: number
+  minLongitude: number
+  maxLongitude: number
+}
+
+export interface FoodMapClusters {
+  dataVersion: number
+  total: number
+  zoom: number
+  items: FoodMapClusterItem[]
+}
+
+export type FoodSort = 'RELEVANCE' | 'HEAT' | 'NEWEST'
 
 export interface MapCoordinate {
   latitude: number
@@ -185,6 +249,7 @@ export interface WishlistStatus {
 
 export interface FoodReviewPayload {
   status: Extract<FoodReviewStatus, 'APPROVED' | 'REJECTED'>
+  expectedVersion: number
 }
 
 export interface FoodCreatePayload {
@@ -200,6 +265,14 @@ export interface FoodCreatePayload {
   ingredients: string
   imageUrl?: string
   remark?: string
+  tagIds?: number[]
+}
+
+export interface PagedWishlist {
+  items: WishlistItem[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 export type FoodUpdatePayload = FoodCreatePayload
@@ -230,12 +303,14 @@ export interface PendingReview {
   field: ReviewField
   currentValue: string
   pendingValue: string
+  version: number
   requestedAt: string
 }
 
 export interface ReviewItemPayload {
   field: ReviewField
   status: Extract<ReviewItemStatus, 'APPROVED' | 'REJECTED'>
+  expectedVersion: number
 }
 
 export type SignatureStatus = 'PENDING' | 'APPROVED' | 'REJECTED'

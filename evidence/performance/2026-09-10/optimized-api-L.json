@@ -1,0 +1,126 @@
+{
+  "generatedAt": "2026-09-10T01:55:14.080Z",
+  "base": "http://web",
+  "results": [
+    {
+      "path": "/api/foods/catalog?page=1&pageSize=20&compact=true",
+      "concurrency": 1,
+      "count": 5,
+      "failures": 0,
+      "medianMs": 119.07664899999999,
+      "p95Ms": 166.003295,
+      "maxMs": 166.003295,
+      "targetMs": 500
+    },
+    {
+      "path": "/api/foods/catalog?page=1&pageSize=20&compact=true",
+      "concurrency": 5,
+      "count": 25,
+      "failures": 0,
+      "medianMs": 92.70841799999997,
+      "p95Ms": 96.16968800000001,
+      "maxMs": 97.39443700000001,
+      "targetMs": 500
+    },
+    {
+      "path": "/api/foods/catalog?page=1&pageSize=20&compact=true",
+      "concurrency": 10,
+      "count": 50,
+      "failures": 0,
+      "medianMs": 101.22213299999999,
+      "p95Ms": 141.006556,
+      "maxMs": 143.37498500000004,
+      "targetMs": 500
+    },
+    {
+      "path": "/api/foods/catalog?page=1&pageSize=20&compact=true",
+      "concurrency": 20,
+      "count": 100,
+      "failures": 0,
+      "medianMs": 185.502877,
+      "p95Ms": 252.02236800000003,
+      "maxMs": 254.77724300000006,
+      "targetMs": 500
+    },
+    {
+      "path": "/api/foods/catalog?keyword=%E7%89%9B%E8%82%89&page=1&pageSize=20&compact=true",
+      "concurrency": 1,
+      "count": 5,
+      "failures": 0,
+      "medianMs": 1524.9405459999998,
+      "p95Ms": 1737.9427469999998,
+      "maxMs": 1737.9427469999998,
+      "targetMs": 800
+    },
+    {
+      "path": "/api/foods/catalog?keyword=%E7%89%9B%E8%82%89&page=1&pageSize=20&compact=true",
+      "concurrency": 5,
+      "count": 25,
+      "failures": 0,
+      "medianMs": 39.260271999999986,
+      "p95Ms": 53.42446699999982,
+      "maxMs": 54.416483999999855,
+      "targetMs": 800
+    },
+    {
+      "path": "/api/foods/catalog?keyword=%E7%89%9B%E8%82%89&page=1&pageSize=20&compact=true",
+      "concurrency": 10,
+      "count": 50,
+      "failures": 0,
+      "medianMs": 82.96239600000035,
+      "p95Ms": 110.78864599999997,
+      "maxMs": 112.36532299999999,
+      "targetMs": 800
+    },
+    {
+      "path": "/api/foods/catalog?keyword=%E7%89%9B%E8%82%89&page=1&pageSize=20&compact=true",
+      "concurrency": 20,
+      "count": 100,
+      "failures": 0,
+      "medianMs": 140.26752399999987,
+      "p95Ms": 206.5719240000003,
+      "maxMs": 211.26206300000013,
+      "targetMs": 800
+    },
+    {
+      "path": "/api/foods/map-clusters?minLatitude=18&maxLatitude=54&minLongitude=73&maxLongitude=136&zoom=4",
+      "concurrency": 1,
+      "count": 5,
+      "failures": 0,
+      "medianMs": 726.0013899999999,
+      "p95Ms": 826.9560650000003,
+      "maxMs": 826.9560650000003,
+      "targetMs": 800
+    },
+    {
+      "path": "/api/foods/map-clusters?minLatitude=18&maxLatitude=54&minLongitude=73&maxLongitude=136&zoom=4",
+      "concurrency": 5,
+      "count": 25,
+      "failures": 0,
+      "medianMs": 45.694478999999774,
+      "p95Ms": 48.60981700000002,
+      "maxMs": 48.69778999999971,
+      "targetMs": 800
+    },
+    {
+      "path": "/api/foods/map-clusters?minLatitude=18&maxLatitude=54&minLongitude=73&maxLongitude=136&zoom=4",
+      "concurrency": 10,
+      "count": 50,
+      "failures": 0,
+      "medianMs": 67.59544000000005,
+      "p95Ms": 98.51962999999978,
+      "maxMs": 101.054032,
+      "targetMs": 800
+    },
+    {
+      "path": "/api/foods/map-clusters?minLatitude=18&maxLatitude=54&minLongitude=73&maxLongitude=136&zoom=4",
+      "concurrency": 20,
+      "count": 100,
+      "failures": 0,
+      "medianMs": 122.42576300000019,
+      "p95Ms": 163.6059479999999,
+      "maxMs": 164.28422600000022,
+      "targetMs": 800
+    }
+  ]
+}

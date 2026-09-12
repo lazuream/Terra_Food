@@ -1,0 +1,5 @@
+CONTAINER                           REPOSITORY                        TAG                 PLATFORM            IMAGE ID            SIZE                CREATED
+terrafood-perf-20260910-backend-1   terrafood-perf-20260910-backend   latest              linux/amd64         9f3ca0f68c51        175MB               8 minutes ago
+terrafood-perf-20260910-mysql-1     mysql                             8.4                 linux/amd64         b3b90af2a655        239MB               6 weeks ago
+terrafood-perf-20260910-redis-1     redis                             7-alpine            linux/amd64         ff02b58f971e        16.3MB              3 weeks ago
+terrafood-perf-20260910-web-1       terrafood-perf-20260910-web       latest              linux/amd64         e151e818f9f9        111MB               21 minutes ago

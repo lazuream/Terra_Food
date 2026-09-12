@@ -4,6 +4,7 @@ import com.dayan.food.entity.po.AppUser;
 import com.dayan.food.entity.po.FoodFavorite;
 import com.dayan.food.entity.vo.FavoriteStatusVO;
 import com.dayan.food.entity.vo.FoodVO;
+import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FavoriteMapper;
 import com.dayan.food.mapper.FoodMapper;
@@ -31,6 +32,18 @@ public class FavoriteServiceImpl implements FavoriteService {
     @Transactional(readOnly = true)
     public List<FoodVO> list(String username) {
         return favoriteMapper.findByUserId(requireUser(username).getId()).stream().map(FoodVO::from).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public FoodCatalogVO page(String username, int page, int pageSize) {
+        Long userId = requireUser(username).getId();
+        int size = Math.min(Math.max(pageSize, 1), 50);
+        int total = favoriteMapper.countByUserId(userId);
+        int pages = Math.max(1, (int) Math.ceil((double) total / size));
+        int normalizedPage = Math.min(Math.max(page, 1), pages);
+        var items = favoriteMapper.findPageByUserId(userId, (normalizedPage - 1) * size, size).stream().map(FoodVO::from).toList();
+        return new FoodCatalogVO(items, total, normalizedPage, size);
     }
 
     @Override

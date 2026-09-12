@@ -35,7 +35,9 @@ public class RegionServiceImpl implements RegionService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    // Location resolution may insert a missing city, so this transaction must
+    // remain read-write.
+    @Transactional
     public RegionVO resolveLocation(String province, String city) {
         String normalizedProvince = cityCenterService.normalizeProvince(province);
         String normalizedCity = normalizeCity(city);
@@ -54,7 +56,7 @@ public class RegionServiceImpl implements RegionService {
                 regionMapper.insert(region);
             } catch (DuplicateKeyException exception) {
                 // 两个登录用户同时首次收录同一城市时，复用另一事务刚创建的记录。
-                region = regionMapper.findByNameAndProvince(normalizedCity, normalizedProvince);
+                region = regionMapper.findByNameAndProvinceForUpdate(normalizedCity, normalizedProvince);
                 if (region == null) throw exception;
             }
         }

@@ -51,3 +51,20 @@ export function getCachedDraftImage(key: string): File | undefined {
 export function forgetDraftImage(key: string): void {
   sessionImages.delete(key)
 }
+
+export function clearDraftsForUser(userId: number): void {
+  const markers = [`foodUpload.v2.${userId}`, `foodEdit.v2:${userId}:`]
+  try {
+    const removals: string[] = []
+    for (let index = 0; index < localStorage.length; index++) {
+      const storageKey = localStorage.key(index)
+      if (storageKey && markers.some((marker) => storageKey.startsWith(DRAFT_PREFIX + marker))) removals.push(storageKey)
+    }
+    removals.forEach((key) => localStorage.removeItem(key))
+  } catch {
+    // Storage-restricted contexts still clear the in-memory File references below.
+  }
+  for (const key of sessionImages.keys()) {
+    if (markers.some((marker) => key.startsWith(marker))) sessionImages.delete(key)
+  }
+}

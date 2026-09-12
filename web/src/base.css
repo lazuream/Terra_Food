@@ -4,8 +4,6 @@
  * 引用顺序必须最先加载，供其余按功能域拆分的样式文件共享。
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700;900&display=swap');
-
 /* ===== 设计令牌 ===== */
 :root {
   --font-serif: 'Noto Serif SC', 'Microsoft YaHei', serif;
@@ -17,6 +15,11 @@
   --color-accent-label: #9e3a2e; /* 眉题/小标签强调 */
   --border-paper: #d8cbb8;       /* 卡片描边 */
   --border-map: #cdbfa9;         /* 地图区描边 */
+  --surface-soft: #f4ecdf;
+  --surface-strong: #fffdf8;
+  --ink: var(--color-ink);
+  --muted: #826f60;
+  --shadow-card: 0 18px 45px #38251f26;
 
   font-family: var(--font-serif);
   color: var(--color-ink);
@@ -24,6 +27,47 @@
   font-synthesis: none;
   text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
+}
+
+:root[data-theme='dark'] {
+  --color-ink: #f2e8d8;
+  --color-bg: #1b1714;
+  --color-paper: #29221d;
+  --color-input: #211b18;
+  --color-accent: #d87562;
+  --color-accent-label: #e59a82;
+  --border-paper: #594a3e;
+  --border-map: #594a3e;
+  --surface-soft: #211b18;
+  --surface-strong: #302721;
+  --ink: var(--color-ink);
+  --muted: #baa896;
+  --shadow-card: 0 18px 45px #0008;
+}
+
+:root[data-theme='dark'] body { background-color: var(--color-bg); background-image: radial-gradient(#d5b99d14 1px, transparent 1px); }
+:root[data-theme='dark'] #app > header { background: #211b18e8; border-color: var(--border-paper); }
+:root[data-theme='dark'] #app > footer { background: #211b18; color: var(--color-ink); }
+:root[data-theme='dark'] input, :root[data-theme='dark'] textarea, :root[data-theme='dark'] select {
+  background: var(--color-input); color: var(--color-ink); border-color: var(--border-paper);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-ink: #f2e8d8;
+    --color-bg: #1b1714;
+    --color-paper: #29221d;
+    --color-input: #211b18;
+    --color-accent: #d87562;
+    --color-accent-label: #e59a82;
+    --border-paper: #594a3e;
+    --border-map: #594a3e;
+    --surface-soft: #211b18;
+    --surface-strong: #302721;
+    --ink: var(--color-ink);
+    --muted: #baa896;
+    --shadow-card: 0 18px 45px #0008;
+  }
 }
 
 /* ===== 重置与正文 ===== */
@@ -38,6 +82,21 @@ body {
   margin: 0;
   background-image: radial-gradient(#8e72591f 1px, transparent 1px);
   background-size: 20px 20px;
+}
+
+.route-load-error {
+  position: fixed;
+  z-index: 3000;
+  inset: 1rem 1rem auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  color: var(--color-ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--color-accent);
+  box-shadow: var(--shadow-card);
 }
 
 a {

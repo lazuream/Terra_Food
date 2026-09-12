@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-import type { AgentChatPayload, AgentChatResponse, FoodFootprint } from './types'
+import type { AgentChatPayload, AgentChatResponse, FoodFootprint, FoodCheckin, FoodTag, PagedCheckins, FoodMapResults, FoodMapClusters, FoodMapClusterItem, FoodSort, PagedFoodTags, FoodTagAdminPayload, PagedWishlist } from './types'
 
 import type {
   Achievement,
@@ -22,6 +22,7 @@ import type {
   MapBounds,
   PagedCatalog,
   PagedFoods,
+  PagedComments,
   LoginPayload,
   PasswordResetPayload,
   SetUserActivePayload,
@@ -38,9 +39,14 @@ import type {
   WishlistStatus,
 } from './types'
 
-interface FoodQuery extends Partial<MapBounds> {
+export interface FoodQuery extends Partial<MapBounds> {
   keyword?: string
   regionId?: number
+  tasteIds?: number[]
+  ingredientIds?: number[]
+  cuisineIds?: number[]
+  sort?: FoodSort
+  inBounds?: boolean
 }
 
 const api = axios.create({
@@ -51,11 +57,27 @@ const api = axios.create({
 
 // 由 main.ts 注册的会话失效回调：统一清空登录态并跳转登录页，
 // 保持 api.ts 与 auth/router 解耦，避免循环依赖。
-let onUnauthorized: (() => void) | undefined
+type RevisionedRequest = { __sessionRevision?: number }
+let onUnauthorized: ((requestRevision?: number) => void) | undefined
+let readSessionRevision: () => number = () => 0
 
-export function registerUnauthorizedHandler(handler: () => void): void {
+export function registerUnauthorizedHandler(handler: (requestRevision?: number) => void): void {
   onUnauthorized = handler
 }
+
+export function registerSessionRevisionProvider(provider: () => number): void {
+  readSessionRevision = provider
+}
+
+api.interceptors.request.use((config) => {
+  ;(config as typeof config & RevisionedRequest).__sessionRevision = readSessionRevision()
+  const method = (config.method || 'get').toLowerCase()
+  if (!['post', 'put', 'patch', 'delete'].includes(method)) return config
+  return api.get<{ token: string; headerName: string }>('/auth/csrf').then(({ data }) => {
+    config.headers.set(data.headerName, data.token)
+    return config
+  })
+})
 
 api.interceptors.response.use(
   (response) => response,
@@ -65,7 +87,7 @@ api.interceptors.response.use(
       // /auth/me 的 401 由 restoreSession 自行处理（静默）；登录失败 401 由登录表单展示，
       // 其余业务请求的 401 才触发统一登出跳转。
       if (!requestUrl.includes('/auth/me') && !requestUrl.includes('/auth/login')) {
-        onUnauthorized?.()
+        onUnauthorized?.((error.config as (typeof error.config & RevisionedRequest) | undefined)?.__sessionRevision)
       }
     }
     return Promise.reject(error)
@@ -83,14 +105,42 @@ export async function getFoodMarkers(params?: FoodQuery): Promise<FoodMarker[]> 
   return response.data
 }
 
+export async function getFoodMapResults(params?: FoodQuery, signal?: AbortSignal): Promise<FoodMapResults> {
+  const response = await api.get<FoodMapResults>('/foods/map-results', { params, signal })
+  return response.data
+}
+
+export async function getFoodMapClusters(params: FoodQuery & { zoom: number }, signal?: AbortSignal): Promise<FoodMapClusters> {
+  const response = await api.get<FoodMapClusters>('/foods/map-clusters', { params, signal })
+  return response.data
+}
+
+export async function getFoodMapClusterMembers(cluster: FoodMapClusterItem, params: FoodQuery, page = 1, signal?: AbortSignal): Promise<PagedCatalog> {
+  const response = await api.get<PagedCatalog>(`/foods/map-clusters/${cluster.id}/members`, {
+    params: { ...params, minLatitude: cluster.minLatitude, maxLatitude: cluster.maxLatitude,
+      minLongitude: cluster.minLongitude, maxLongitude: cluster.maxLongitude, page, pageSize: 20 }, signal,
+  })
+  return response.data
+}
+
 /** 目录分页：keyword/regionId 过滤 + page/pageSize，与地图 bounds 解耦。 */
 export async function getFoodCatalog(params: {
   keyword?: string
   regionId?: number
+  tasteIds?: number[]
+  ingredientIds?: number[]
+  cuisineIds?: number[]
+  sort?: FoodSort
+  inBounds?: boolean
+  minLatitude?: number
+  maxLatitude?: number
+  minLongitude?: number
+  maxLongitude?: number
   page: number
   pageSize: number
-}): Promise<PagedCatalog> {
-  const response = await api.get<PagedCatalog>('/foods/catalog', { params })
+  compact?: boolean
+}, signal?: AbortSignal): Promise<PagedCatalog> {
+  const response = await api.get<PagedCatalog>('/foods/catalog', { params, signal })
   return response.data
 }
 
@@ -370,8 +420,10 @@ function normalizeCity(value: string): string {
     .trim()
 }
 
-export async function createFood(payload: FoodCreatePayload): Promise<Food> {
-  const response = await api.post<Food>('/foods', payload)
+export async function createFood(payload: FoodCreatePayload, idempotencyKey?: string): Promise<Food> {
+  const response = await api.post<Food>('/foods', payload, {
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+  })
   return response.data
 }
 
@@ -392,6 +444,66 @@ export async function getMyFootprints(limit = 20): Promise<FoodFootprint[]> {
   return response.data
 }
 
+export async function getFoodCommentsPage(foodId: number, page = 1, pageSize = 20, signal?: AbortSignal): Promise<PagedComments> {
+  const response = await api.get<PagedComments>(`/foods/${foodId}/comments/page`, { params: { page, pageSize }, signal })
+  return response.data
+}
+
+export async function getMyFavoritesPage(page = 1, pageSize = 10): Promise<PagedCatalog> {
+  const response = await api.get<PagedCatalog>('/profile/favorites/page', { params: { page, pageSize } })
+  return response.data
+}
+
+export async function createFoodCheckin(foodId: number, payload: { eatenOn: string; note?: string; visibility: 'PUBLIC' | 'PRIVATE'; timezone: string }, idempotencyKey: string): Promise<FoodCheckin> {
+  const response = await api.post<FoodCheckin>(`/foods/${foodId}/check-ins`, payload, { headers: { 'Idempotency-Key': idempotencyKey } })
+  return response.data
+}
+
+export async function getMyCheckins(page = 1, pageSize = 20): Promise<PagedCheckins> {
+  const response = await api.get<PagedCheckins>('/profile/check-ins', { params: { page, pageSize } })
+  if (!response.data || !Array.isArray(response.data.items)) throw new Error('Invalid check-in response')
+  return response.data
+}
+
+export async function updateMyCheckin(id: number, payload: { eatenOn: string; note?: string; visibility: 'PUBLIC' | 'PRIVATE'; timezone: string; version: number }): Promise<FoodCheckin> {
+  const response = await api.patch<FoodCheckin>(`/profile/check-ins/${id}`, payload)
+  return response.data
+}
+
+export async function deleteMyCheckin(id: number, version: number): Promise<void> {
+  await api.delete(`/profile/check-ins/${id}`, { params: { version } })
+}
+
+export async function getFoodTags(type?: FoodTag['type'], keyword?: string): Promise<FoodTag[]> {
+  const response = await api.get<FoodTag[]>('/food-tags', { params: { type, keyword } })
+  return response.data
+}
+
+export async function createFoodTag(payload: { type: FoodTag['type']; name: string }): Promise<FoodTag> {
+  const response = await api.post<FoodTag>('/food-tags', payload)
+  return response.data
+}
+
+export async function getFoodTagsForFood(foodId: number): Promise<FoodTag[]> {
+  const response = await api.get<FoodTag[]>(`/food-tags/food/${foodId}`)
+  return response.data
+}
+
+export async function getAdminFoodTags(params: { status?: string; type?: string; keyword?: string; page?: number; pageSize?: number } = {}): Promise<PagedFoodTags> {
+  const response = await api.get<PagedFoodTags>('/admin/food-tags', { params })
+  return response.data
+}
+
+export async function updateAdminFoodTag(id: number, payload: FoodTagAdminPayload): Promise<FoodTag> {
+  const response = await api.patch<FoodTag>(`/admin/food-tags/${id}`, payload)
+  return response.data
+}
+
+export async function mergeAdminFoodTag(id: number, targetId: number, version: number): Promise<FoodTag> {
+  const response = await api.post<FoodTag>(`/admin/food-tags/${id}/merge`, { targetId, version })
+  return response.data
+}
+
 export async function chatWithAgent(payload: AgentChatPayload): Promise<AgentChatResponse> {
   const response = await api.post<AgentChatResponse>('/agent/chat', payload, { timeout: 60_000 })
   return response.data
@@ -402,11 +514,11 @@ export async function updateMyFood(id: number, payload: FoodUpdatePayload): Prom
   return response.data
 }
 
-export async function uploadImage(file: File): Promise<string> {
+export async function uploadImage(file: File, signal?: AbortSignal): Promise<string> {
   const formData = new FormData()
   formData.append('file', file)
 
-  const response = await api.post<{ url: string }>('/images', formData)
+  const response = await api.post<{ url: string }>('/images', formData, { timeout: 60_000, signal })
   return response.data.url
 }
 
@@ -419,8 +531,7 @@ export async function importFoodSpreadsheet(file: File): Promise<FoodImportResul
 }
 
 export async function login(payload: LoginPayload): Promise<AuthUser> {
-  // 登录响应会等待用户信息与地图菜品完成 Redis 预热；首次冷缓存可能超过全局 8 秒。
-  const response = await api.post<AuthUser>('/auth/login', payload, { timeout: 60_000 })
+  const response = await api.post<AuthUser>('/auth/login', payload)
   return response.data
 }
 
@@ -457,6 +568,12 @@ export async function removeFavorite(foodId: number): Promise<FavoriteStatus> {
 export async function getMyWishlist(): Promise<WishlistItem[]> {
   const response = await api.get<WishlistItem[]>('/profile/wishlist')
   if (!Array.isArray(response.data)) throw new Error('Invalid list response')
+  return response.data
+}
+
+export async function getMyWishlistPage(page = 1, pageSize = 20): Promise<PagedWishlist> {
+  const response = await api.get<PagedWishlist>('/profile/wishlist/page', { params: { page, pageSize } })
+  if (!response.data || !Array.isArray(response.data.items)) throw new Error('Invalid wishlist response')
   return response.data
 }
 

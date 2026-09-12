@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dayan.food.mapper.FoodTagMapper">
+ <resultMap id="tag" type="com.dayan.food.entity.vo.FoodTagVO">
+  <constructor>
+   <idArg column="id" javaType="java.lang.Long"/>
+   <arg column="type" javaType="java.lang.String"/>
+   <arg column="name" javaType="java.lang.String"/>
+   <arg column="status" javaType="java.lang.String"/>
+   <arg column="merged_into_id" javaType="java.lang.Long"/>
+   <arg column="version" javaType="java.lang.Integer"/>
+   <arg column="created_by" javaType="java.lang.Long"/>
+   <arg column="created_at" javaType="java.time.LocalDateTime"/>
+   <arg column="reviewed_at" javaType="java.time.LocalDateTime"/>
+  </constructor>
+ </resultMap>
+ <sql id="tagColumns">t.id,t.type,t.name,t.status,t.merged_into_id,t.version,t.created_by,t.created_at,t.reviewed_at</sql>
+ <select id="findApproved" resultMap="tag">SELECT DISTINCT <include refid="tagColumns"/> FROM food_tag t LEFT JOIN food_tag_alias a ON a.tag_id=t.id WHERE t.status='APPROVED' <if test="type != null and type != ''">AND t.type=#{type}</if> <if test="keyword != null and keyword != ''">AND (LOCATE(LOWER(#{keyword}),LOWER(t.name))&gt;0 OR LOCATE(LOWER(#{keyword}),LOWER(a.alias))&gt;0)</if> ORDER BY t.name LIMIT 100</select>
+ <insert id="insert">INSERT INTO food_tag(type,name,normalized_name,created_by) VALUES(#{type},#{name},#{normalized},#{userId})</insert>
+ <select id="findById" resultMap="tag">SELECT <include refid="tagColumns"/> FROM food_tag t WHERE t.id=#{id}</select>
+ <select id="findByName" resultMap="tag">SELECT <include refid="tagColumns"/> FROM food_tag t WHERE t.type=#{type} AND t.normalized_name=#{normalized}</select>
+ <select id="countCreatedToday" resultType="int">SELECT COUNT(*) FROM food_tag WHERE created_by=#{userId} AND created_at&gt;=CURRENT_DATE</select>
+ <select id="countUsable" resultType="int">SELECT COUNT(*) FROM food_tag WHERE id IN <foreach collection="tagIds" item="id" open="(" separator="," close=")">#{id}</foreach> AND (status='APPROVED' OR (status='PENDING' AND created_by=#{userId}))</select>
+ <select id="countTypeForIds" resultType="int">SELECT COUNT(*) FROM food_tag WHERE type=#{type} AND id IN <foreach collection="tagIds" item="id" open="(" separator="," close=")">#{id}</foreach></select>
+ <delete id="deleteLinks">DELETE FROM food_tag_link WHERE food_id=#{foodId}</delete>
+ <insert id="insertLinks">INSERT IGNORE INTO food_tag_link(food_id,tag_id) VALUES <foreach collection="tagIds" item="id" separator=",">(#{foodId},#{id})</foreach></insert>
+ <select id="findForFood" resultMap="tag">SELECT <include refid="tagColumns"/> FROM food_tag_link l INNER JOIN food_tag t ON t.id=l.tag_id WHERE l.food_id=#{foodId} AND (t.status='APPROVED' <if test="includePendingForUser != null">OR (t.status='PENDING' AND t.created_by=#{includePendingForUser})</if>) ORDER BY t.type,t.name</select>
+ <sql id="adminFilters">1=1 <if test="status != null and status != ''">AND t.status=#{status}</if><if test="type != null and type != ''">AND t.type=#{type}</if><if test="keyword != null and keyword != ''">AND LOCATE(LOWER(#{keyword}),LOWER(t.name))&gt;0</if></sql>
+ <select id="findAdmin" resultMap="tag">SELECT <include refid="tagColumns"/> FROM food_tag t WHERE <include refid="adminFilters"/> ORDER BY FIELD(t.status,'PENDING','APPROVED','REJECTED','MERGED','DISABLED'),t.id DESC LIMIT #{pageSize} OFFSET #{offset}</select>
+ <select id="countAdmin" resultType="int">SELECT COUNT(*) FROM food_tag t WHERE <include refid="adminFilters"/></select>
+ <update id="updateDefinition">UPDATE food_tag SET name=#{name},normalized_name=#{normalized},type=#{type},status=#{status},reviewed_by=#{reviewedBy},reviewed_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=#{id} AND version=#{version} AND status&lt;&gt;'MERGED'</update>
+ <insert id="migrateLinks">INSERT IGNORE INTO food_tag_link(food_id,tag_id) SELECT food_id,#{targetId} FROM food_tag_link WHERE tag_id=#{sourceId}</insert>
+ <delete id="deleteLinksForTag">DELETE FROM food_tag_link WHERE tag_id=#{tagId}</delete>
+ <update id="markMerged">UPDATE food_tag SET status='MERGED',merged_into_id=#{targetId},reviewed_by=#{reviewedBy},reviewed_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=#{id} AND version=#{version} AND status&lt;&gt;'MERGED'</update>
+ <insert id="insertAlias">INSERT IGNORE INTO food_tag_alias(tag_id,alias,normalized_alias) VALUES(#{tagId},#{alias},#{normalized})</insert>
+ <insert id="insertAudit">INSERT INTO food_tag_audit(tag_id,actor_id,action,detail) VALUES(#{tagId},#{actorId},#{action},#{detail})</insert>
+</mapper>

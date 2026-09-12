@@ -5,6 +5,8 @@ import com.dayan.food.entity.vo.FavoriteStatusVO;
 import com.dayan.food.entity.vo.FoodVO;
 import com.dayan.food.entity.vo.WishlistItemVO;
 import com.dayan.food.entity.vo.WishlistStatusVO;
+import com.dayan.food.entity.vo.WishlistPageVO;
+import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.service.FavoriteService;
 import com.dayan.food.service.WishlistService;
 import jakarta.validation.Valid;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
@@ -35,6 +38,13 @@ public class CollectionController {
     @GetMapping("/favorites")
     public List<FoodVO> favorites(Authentication authentication) {
         return favoriteService.list(authentication.getName());
+    }
+
+    @GetMapping("/favorites/page")
+    public FoodCatalogVO favoritePage(@RequestParam(defaultValue="1") int page,
+                                      @RequestParam(defaultValue="10") int pageSize,
+                                      Authentication authentication) {
+        return favoriteService.page(authentication.getName(), page, pageSize);
     }
 
     @GetMapping("/favorites/{foodId}/status")
@@ -55,6 +65,13 @@ public class CollectionController {
     @GetMapping("/wishlist")
     public List<WishlistItemVO> wishlist(Authentication authentication) {
         return wishlistService.list(authentication.getName());
+    }
+
+    @GetMapping("/wishlist/page")
+    public WishlistPageVO wishlistPage(@RequestParam(defaultValue="1") int page,
+                                       @RequestParam(defaultValue="20") int pageSize,
+                                       Authentication authentication) {
+        return wishlistService.page(authentication.getName(), page, pageSize);
     }
 
     @GetMapping("/wishlist/foods/{foodId}/status")

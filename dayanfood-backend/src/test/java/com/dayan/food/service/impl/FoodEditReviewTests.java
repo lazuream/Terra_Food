@@ -34,22 +34,28 @@ class FoodEditReviewTests {
                 "Address", "Summary", "Story", "Ingredients", null, null);
     }
 
+    private AppUser owner(UserRole role) {
+        AppUser owner = new AppUser("owner", "unused", "Owner", role);
+        ReflectionTestUtils.setField(owner, "id", 1L);
+        return owner;
+    }
+
     @ParameterizedTest
     @EnumSource(UserRole.class)
     void everyRoleMustResubmitAndInvalidatePublicCaches(UserRole role) {
-        when(users.findByUsername("owner")).thenReturn(new AppUser("owner", "unused", "Owner", role));
+        when(users.findByUsername("owner")).thenReturn(owner(role));
         Food original = new Food("Original", null, BigDecimal.ONE, BigDecimal.TEN,
                 "Address", "Summary", "Story", "Ingredients", null, null, "owner", FoodReviewStatus.APPROVED);
         Food pending = new Food("Corrected", null, BigDecimal.ONE, BigDecimal.TEN,
                 "Address", "Summary", "Story", "Ingredients", null, null, "owner", FoodReviewStatus.PENDING);
-        when(foods.findOwnedById(7L, "owner")).thenReturn(original, pending);
-        when(foods.updateOwnedDetails(7L, "owner", "Corrected", null, BigDecimal.ONE, BigDecimal.TEN,
+        when(foods.findOwnedById(7L, 1L)).thenReturn(original, pending);
+        when(foods.updateOwnedDetails(7L, 1L, "Corrected", null, BigDecimal.ONE, BigDecimal.TEN,
                 "Address", "Summary", "Story", "Ingredients", null, null, FoodReviewStatus.PENDING, null)).thenReturn(1);
-        for (String cache : new String[]{"foodDetails", "foodLists", "foodCatalogs", "foodMarkers", "wishlistMatchCatalog"}) {
+        for (String cache : new String[]{"foodDetails", "foodLists", "foodCatalogs", "foodMarkers"}) {
             caches.getCache(cache).put(7L, original);
         }
         assertEquals(FoodReviewStatus.PENDING, service.updateMine(7L, request(null), "owner").reviewStatus());
-        for (String cache : new String[]{"foodDetails", "foodLists", "foodCatalogs", "foodMarkers", "wishlistMatchCatalog"}) {
+        for (String cache : new String[]{"foodDetails", "foodLists", "foodCatalogs", "foodMarkers"}) {
             assertNull(caches.getCache(cache).get(7L), cache);
         }
         verify(foods, never()).updateLocationLabels(anyLong(), any(), any());
@@ -57,23 +63,23 @@ class FoodEditReviewTests {
 
     @Test
     void cannotEditAnotherUsersDish() {
-        when(users.findByUsername("owner")).thenReturn(new AppUser("owner", "unused", "Owner", UserRole.ADMIN));
+        when(users.findByUsername("owner")).thenReturn(owner(UserRole.ADMIN));
         assertEquals(404, assertThrows(ResponseStatusException.class,
                 () -> service.updateMine(7L, request(null), "owner")).getStatusCode().value());
-        verify(foods).findOwnedById(7L, "owner");
+        verify(foods).findOwnedById(7L, 1L);
         verifyNoMoreInteractions(foods);
     }
 
     @Test
     void changedRegionClearsImportedLabels() {
-        when(users.findByUsername("owner")).thenReturn(new AppUser("owner", "unused", "Owner", UserRole.USER));
+        when(users.findByUsername("owner")).thenReturn(owner(UserRole.USER));
         Region region = new Region("New city", "New province", "");
         ReflectionTestUtils.setField(region, "id", 2L);
         when(regions.findById(2L)).thenReturn(region);
         Food original = new Food("Original", null, BigDecimal.ONE, BigDecimal.TEN,
                 "Address", "Summary", "Story", "Ingredients", null, null, "owner", FoodReviewStatus.PENDING);
-        when(foods.findOwnedById(7L, "owner")).thenReturn(original);
-        when(foods.updateOwnedDetails(7L, "owner", "Corrected", 2L, BigDecimal.ONE, BigDecimal.TEN,
+        when(foods.findOwnedById(7L, 1L)).thenReturn(original);
+        when(foods.updateOwnedDetails(7L, 1L, "Corrected", 2L, BigDecimal.ONE, BigDecimal.TEN,
                 "Address", "Summary", "Story", "Ingredients", null, null, FoodReviewStatus.PENDING, null)).thenReturn(1);
         service.updateMine(7L, request(2L), "owner");
         verify(foods).updateLocationLabels(7L, null, null);

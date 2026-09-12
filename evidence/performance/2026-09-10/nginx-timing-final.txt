@@ -1,0 +1,6 @@
+[sudo: authenticate] 密码： 
+2026/09/10 02:29:01 [notice] 1#1: start worker process 31
+2026/09/10 02:29:01 [notice] 1#1: start worker process 32
+af2770f67bd3076cb4666325ace88dfc GET /api/foods/catalog status=200 total=0.017 upstream=0.017
+5b06ab4f8c1297ae979042bed98b1b2e GET /api/foods/catalog status=200 total=0.009 upstream=0.009
+f5c167e057192d6935a99758c46dcc93 GET /api/foods/catalog status=200 total=0.007 upstream=0.007

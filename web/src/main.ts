@@ -2,17 +2,8 @@ import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
 import App from './App.vue'
-import AboutView from './views/AboutView.vue'
-import AdminView from './views/AdminView.vue'
-import FoodDetailView from './views/FoodDetailView.vue'
-import HomeView from './views/HomeView.vue'
-import LoginView from './views/LoginView.vue'
-import NotFoundView from './views/NotFoundView.vue'
-import ProfileView from './views/ProfileView.vue'
-import RegisterView from './views/RegisterView.vue'
-import UserPublicView from './views/UserPublicView.vue'
-import { isAdminRole, useAuth } from './auth'
-import { registerUnauthorizedHandler } from './api'
+import { AUTH_SESSION_CHANGE_KEY, isAdminRole, useAuth } from './auth'
+import { registerSessionRevisionProvider, registerUnauthorizedHandler } from './api'
 import { i18n, saveLocale } from './i18n'
 
 // 样式按功能域拆分：基础 → 各页面 → 响应式（顺序即级联优先级）
@@ -28,54 +19,60 @@ import './profile.css'
 import './agent.css'
 // 响应式规则必须最后加载，确保窄屏覆盖所有功能域样式。
 import './responsive.css'
+// Theme overrides load last so legacy fixed colors cannot win the cascade.
+import './theme.css'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     {
       path: '/',
-      component: HomeView,
+      component: () => import('./views/HomeView.vue'),
     },
     {
       path: '/foods/:id',
-      component: FoodDetailView,
+      component: () => import('./views/FoodDetailView.vue'),
     },
     {
       path: '/login',
-      component: LoginView,
+      component: () => import('./views/AuthView.vue'),
     },
     {
       path: '/register',
-      component: RegisterView,
+      component: () => import('./views/AuthView.vue'),
     },
     {
       path: '/about',
-      component: AboutView,
+      component: () => import('./views/AboutView.vue'),
     },
     {
       path: '/users/:id',
-      component: UserPublicView,
+      component: () => import('./views/UserPublicView.vue'),
     },
     {
       path: '/profile',
-      component: ProfileView,
+      component: () => import('./views/ProfileView.vue'),
       meta: { requiresAuth: true },
     },
     {
       path: '/admin',
-      component: AdminView,
+      component: () => import('./views/AdminView.vue'),
       meta: { requiresAuth: true, requiresAdmin: true },
     },
     {
       path: '/:pathMatch(.*)*',
-      component: NotFoundView,
+      component: () => import('./views/NotFoundView.vue'),
     },
   ],
 })
 
 router.beforeEach(async (to) => {
   const auth = useAuth()
-  await auth.restoreSession()
+  if (to.meta.requiresAuth) {
+    await auth.restoreSession()
+  } else {
+    void auth.restoreSession()
+  }
 
   if (to.meta.requiresAuth && !auth.currentUser.value) {
     return {
@@ -98,11 +95,18 @@ router.beforeEach(async (to) => {
   }
 })
 
+router.onError(() => {
+  document.documentElement.dataset.routeLoadFailed = 'true'
+  window.dispatchEvent(new CustomEvent('terra:route-load-error'))
+})
+
 saveLocale(i18n.global.locale.value)
 
 // 统一 401 处理：清除登录态并带 redirect 跳登录（防重复跳转由调用频率与路径判定兜底）。
-registerUnauthorizedHandler(() => {
-  const auth = useAuth()
+const auth = useAuth()
+registerSessionRevisionProvider(() => auth.getSessionRevision())
+registerUnauthorizedHandler((requestRevision) => {
+  if (requestRevision !== undefined && requestRevision !== auth.getSessionRevision()) return
   auth.clearSession()
   if (router.currentRoute.value.path !== '/login') {
     void router.push({
@@ -112,7 +116,14 @@ registerUnauthorizedHandler(() => {
   }
 })
 
+window.addEventListener('storage', (event) => {
+  if (event.key === AUTH_SESSION_CHANGE_KEY) void auth.handleExternalSessionChange()
+})
+
 createApp(App)
   .use(i18n)
   .use(router)
   .mount('#app')
+
+document.querySelector('#startup-shell')?.remove()
+performance.mark('terra:app-mounted')

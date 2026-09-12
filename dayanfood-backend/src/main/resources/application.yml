@@ -3,16 +3,17 @@ spring:
     name: dayan-food
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/dayan_food?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
-    username: ${DB_USERNAME:root}
+    username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD}
       timeout: 2s
   cache:
-    type: redis
+    # Public discovery caching remains off until cache keys use a durable data version.
+    type: ${CACHE_TYPE:none}
     redis:
       time-to-live: 10m
       cache-null-values: false
@@ -33,8 +34,10 @@ spring:
           auth: ${MAIL_SMTP_AUTH:true}
           starttls:
             enable: ${MAIL_STARTTLS_ENABLED:true}
+            required: ${MAIL_STARTTLS_REQUIRED:true}
           ssl:
             enable: ${MAIL_SSL_ENABLED:false}
+            checkserveridentity: ${MAIL_CHECK_SERVER_IDENTITY:true}
           connectiontimeout: 5000
           timeout: 5000
           writetimeout: 5000
@@ -44,12 +47,16 @@ spring:
   servlet:
     multipart:
       max-file-size: 5MB
-      max-request-size: 5MB
+      max-request-size: 6MB
 app:
   upload-directory: ${UPLOAD_DIRECTORY:uploads}
   upload:
     max-image-bytes: ${MAX_IMAGE_BYTES:5242880}
     orphan-retention: ${UPLOAD_ORPHAN_RETENTION:24h}
+    # Disabled until asset references and deletion leases are transactional.
+    orphan-cleanup-enabled: ${UPLOAD_ORPHAN_CLEANUP_ENABLED:false}
+    # Enable only when processing runs in the isolated worker with leases and memory limits.
+    variant-processing-enabled: ${UPLOAD_VARIANT_PROCESSING_ENABLED:false}
     cleanup-cron: ${UPLOAD_CLEANUP_CRON:0 30 3 * * *}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
@@ -68,6 +75,8 @@ app:
     max-attempts: ${REGISTRATION_CODE_MAX_ATTEMPTS:5}
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    max-swallow-size: 6MB
   servlet:
     session:
       cookie:

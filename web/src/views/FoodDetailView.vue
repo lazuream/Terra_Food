@@ -9,8 +9,9 @@ import {
   addFavorite,
   addWishlistItem,
   createFoodComment,
+  createFoodCheckin,
   getFood,
-  getFoodComments,
+  getFoodCommentsPage,
   getFavoriteStatus,
   getFoodLikeStatus,
   getWishlistStatus,
@@ -31,7 +32,22 @@ const auth = useAuth()
 const currentUser = auth.currentUser
 const food = ref<Food>()
 const comments = ref<FoodComment[]>([])
+const commentsTotal = ref(0)
+const commentsPage = ref(1)
 const commentContent = ref('')
+const checkinMode = ref(false)
+function localDateInputValue(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+const checkinDate = ref(localDateInputValue())
+const checkinVisibility = ref<'PUBLIC' | 'PRIVATE'>('PUBLIC')
+const checkinIdempotencyKey = ref(crypto.randomUUID())
+watch([checkinDate, checkinVisibility, commentContent], () => {
+  if (checkinMode.value && !submittingComment.value) checkinIdempotencyKey.value = crypto.randomUUID()
+})
 const error = ref('')
 const commentError = ref('')
 const commentsLoading = ref(false)
@@ -64,14 +80,16 @@ function formatDate(value: string): string {
   }).format(new Date(value))
 }
 
-async function loadComments(foodIdValue: number) {
+async function loadComments(foodIdValue: number, append = false) {
   const signal = foodLoadController?.signal
   commentsLoading.value = true
   commentError.value = ''
   try {
-    const result = await getFoodComments(foodIdValue)
+    const result = await getFoodCommentsPage(foodIdValue, append ? commentsPage.value + 1 : 1, 20, signal)
     if (signal?.aborted || Number(route.params.id) !== foodIdValue) return
-    comments.value = result
+    comments.value = append ? [...comments.value, ...result.items] : result.items
+    commentsPage.value = result.page
+    commentsTotal.value = result.total
   } catch {
     if (signal?.aborted) return
     commentError.value = t('detail.commentLoadError')
@@ -94,6 +112,7 @@ async function submitComment() {
     const comment = await createFoodComment(Number(route.params.id), { content })
     if (signal?.aborted) return
     comments.value.unshift(comment)
+    commentsTotal.value += 1
     commentContent.value = ''
   } catch (requestError) {
     if (signal?.aborted) return
@@ -103,6 +122,24 @@ async function submitComment() {
   } finally {
     if (!signal?.aborted) submittingComment.value = false
   }
+}
+
+async function submitCheckin() {
+  if (!currentUser.value || submittingComment.value) return
+  submittingComment.value = true
+  commentError.value = ''
+  try {
+    const expectedFoodId = Number(route.params.id)
+    const expectedUserId = currentUser.value.id
+    await createFoodCheckin(expectedFoodId, { eatenOn: checkinDate.value, note: commentContent.value.trim() || undefined, visibility: checkinVisibility.value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' }, checkinIdempotencyKey.value)
+    if (Number(route.params.id) !== expectedFoodId || currentUser.value?.id !== expectedUserId) return
+    commentContent.value = ''
+    checkinMode.value = false
+    checkinIdempotencyKey.value = crypto.randomUUID()
+    await loadComments(Number(route.params.id))
+  } catch (requestError) {
+    commentError.value = apiErrorMessage(requestError, '打卡保存失败，请稍后重试。')
+  } finally { submittingComment.value = false }
 }
 
 function handleAgentCommentPublished(event: Event) {
@@ -345,10 +382,10 @@ onBeforeUnmount(() => {
           <small>{{ t('detail.commentsEyebrow') }}</small>
           <h2>{{ t('detail.comments') }}</h2>
         </div>
-        <span>{{ t('detail.commentCount', { count: comments.length }) }}</span>
+        <span>{{ t('detail.commentCount', { count: commentsTotal }) }}</span>
       </div>
 
-      <form v-if="currentUser" class="comment-form" @submit.prevent="submitComment">
+    <form v-if="currentUser" class="comment-form" @submit.prevent="checkinMode ? submitCheckin() : submitComment()">
         <div class="user-avatar comment-form-avatar">
           <img
             v-if="currentUser.avatarUrl"
@@ -358,18 +395,26 @@ onBeforeUnmount(() => {
           <span v-else>{{ avatarInitial(currentUser.displayName) }}</span>
         </div>
         <div>
-          <label for="food-comment">{{ t('detail.commentAs', { name: currentUser.displayName }) }}</label>
+          <div class="comment-mode-switch">
+            <button type="button" :class="{ active: !checkinMode }" @click="checkinMode = false">{{ t('detail.commentMode') }}</button>
+            <button type="button" :class="{ active: checkinMode }" @click="checkinMode = true">{{ t('detail.checkinMode') }}</button>
+          </div>
+          <label for="food-comment">{{ checkinMode ? t('detail.checkinAs', { name: currentUser.displayName }) : t('detail.commentAs', { name: currentUser.displayName }) }}</label>
+          <div v-if="checkinMode" class="checkin-options">
+            <label>{{ t('detail.checkinDate') }} <input v-model="checkinDate" type="date" :max="localDateInputValue()" required></label>
+            <label>{{ t('detail.checkinVisibility') }} <select v-model="checkinVisibility"><option value="PUBLIC">{{ t('detail.checkinPublic') }}</option><option value="PRIVATE">{{ t('detail.checkinPrivate') }}</option></select></label>
+          </div>
           <textarea
             id="food-comment"
             v-model="commentContent"
             maxlength="500"
             :placeholder="t('detail.commentPlaceholder')"
-            required
+            :required="!checkinMode"
           />
           <div class="comment-form-actions">
             <small>{{ commentContent.length }}/500</small>
             <button :disabled="submittingComment">
-              {{ submittingComment ? t('detail.commentSubmitting') : t('detail.commentSubmit') }}
+              {{ submittingComment ? t('detail.commentSubmitting') : (checkinMode ? t('detail.checkinSubmit') : t('detail.commentSubmit')) }}
             </button>
           </div>
         </div>
@@ -421,10 +466,12 @@ onBeforeUnmount(() => {
               </div>
               <time :datetime="comment.createdAt">{{ formatDate(comment.createdAt) }}</time>
             </div>
-            <p>{{ comment.content }}</p>
+            <small v-if="comment.checkinId" class="checkin-badge">{{ t('detail.checkinBadge', { date: comment.eatenOn }) }}</small>
+            <p>{{ comment.content || t('detail.checkinWithoutNote') }}</p>
           </div>
         </div>
       </div>
+      <button v-if="comments.length < commentsTotal" type="button" :disabled="commentsLoading" @click="loadComments(Number(route.params.id), true)">{{ t('home.loadMoreFavorites') }}</button>
     </section>
   </div>
   <p v-else class="state">

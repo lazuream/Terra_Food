@@ -29,6 +29,10 @@
         WHERE name = #{name}
           AND province = #{province}
     </select>
+    <select id="findByNameAndProvinceForUpdate" resultMap="regionResultMap">
+        SELECT id, name, province, description FROM region
+        WHERE name = #{name} AND province = #{province} FOR UPDATE
+    </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO region (name, province, description)

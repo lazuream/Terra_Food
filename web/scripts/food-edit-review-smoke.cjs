@@ -2,11 +2,15 @@ const { chromium } = require('playwright')
 const assert = require('node:assert/strict')
 const base = process.env.SHARE_TEST_URL || 'http://127.0.0.1:5173'
 ;(async () => {
- const browser = await chromium.launch({channel:'chrome',headless:true})
+ const browser = await chromium.launch(process.env.SHARE_TEST_EXECUTABLE
+  ? { executablePath: process.env.SHARE_TEST_EXECUTABLE, headless: true }
+  : { channel: process.env.SHARE_TEST_BROWSER || 'chrome', headless: true })
  try {
   for (const width of [1440,390]) {
    const page = await browser.newPage({viewport:{width,height:900},locale:'zh-CN'})
-   const errors=[];page.on('pageerror',e=>errors.push(e.message))
+   const errors=[]
+   page.on('pageerror',e=>{ errors.push(e.message); console.error('BROWSER_PAGE_ERROR',e.message) })
+   page.on('console',message=>{ if(message.type()==='error') console.error('BROWSER_CONSOLE_ERROR',message.text()) })
    let fail=true
    let food={id:7,name:'测试菜品',region:{id:1,name:'城市',province:'省份'},latitude:30,longitude:110,address:'旧地址',summary:'简介',story:'掌故',ingredients:'食材',imageUrl:'',remark:'',heat:0,reviewStatus:'APPROVED',createdAt:'2026-09-09'}
    await page.route('**/api/**',async route=>{
@@ -18,10 +22,13 @@ const base = process.env.SHARE_TEST_URL || 'http://127.0.0.1:5173'
      food={...food,...payload,reviewStatus:'PENDING'};return route.fulfill({json:food})
     }
     if(path==='/api/profile/foods')return route.fulfill({json:[food]})
+    if(path==='/api/profile/check-ins')return route.fulfill({json:{items:[],total:0,page:1,pageSize:20}})
     if(path==='/api/regions')return route.fulfill({json:[food.region]})
     return route.fulfill({json:[]})
    })
    const response=await page.goto(base+'/profile');assert.equal(response.status(),200)
+   await page.locator('.profile-page').waitFor()
+   await page.locator('.profile-food-card').waitFor()
    await page.locator('.profile-food-card button').click()
    await page.locator('.profile-edit-modal input').first().fill('已纠错菜品')
    await page.locator('.profile-edit-modal input[maxlength="500"]').first().fill('新地址')

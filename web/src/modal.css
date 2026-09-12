@@ -182,3 +182,10 @@
 .hidden-file-input {
   display: none;
 }
+
+.submit-snapshot {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

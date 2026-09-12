@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dayan.food.mapper.ImageAssetMapper">
+    <resultMap id="asset" type="com.dayan.food.entity.po.ImageAsset">
+        <id property="id" column="id"/>
+        <result property="originalUrl" column="original_url"/>
+        <result property="originalWidth" column="original_width"/>
+        <result property="originalHeight" column="original_height"/>
+        <result property="status" column="status"/>
+        <result property="variant320Url" column="variant_320_url"/>
+        <result property="variant640Url" column="variant_640_url"/>
+        <result property="variant1280Url" column="variant_1280_url"/>
+        <result property="processorVersion" column="processor_version"/>
+    </resultMap>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        INSERT INTO image_asset (original_url, original_width, original_height, status, processor_version)
+        VALUES (#{originalUrl}, #{originalWidth}, #{originalHeight}, 'PENDING', 1)
+    </insert>
+    <select id="findByOriginalUrl" resultMap="asset">SELECT * FROM image_asset WHERE original_url=#{originalUrl}</select>
+    <select id="findPending" resultMap="asset">SELECT * FROM image_asset WHERE status='PENDING' ORDER BY id LIMIT #{limit}</select>
+    <update id="markProcessing">UPDATE image_asset SET status='PROCESSING', error_code=NULL WHERE id=#{id} AND status='PENDING'</update>
+    <update id="markReady">UPDATE image_asset SET status='READY', variant_320_url=#{url320}, variant_640_url=#{url640}, variant_1280_url=#{url1280}, error_code=NULL WHERE id=#{id}</update>
+    <update id="markFailed">UPDATE image_asset SET status='FAILED', error_code=#{errorCode} WHERE id=#{id}</update>
+    <update id="resetProcessing">UPDATE image_asset SET status='PENDING' WHERE status='PROCESSING'</update>
+    <update id="retryFailed">UPDATE image_asset SET status='PENDING', error_code=NULL WHERE id=#{id} AND status='FAILED'</update>
+    <delete id="deleteByOriginalUrl">DELETE FROM image_asset WHERE original_url=#{originalUrl}</delete>
+</mapper>

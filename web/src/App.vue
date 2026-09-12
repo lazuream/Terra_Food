@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
 import { isAdminRole, useAuth } from './auth'
 import { saveLocale, type SupportedLocale } from './i18n'
-import BackgroundMusic from './components/BackgroundMusic.vue'
-import AchievementToast from './components/AchievementToast.vue'
-import AgentPanel from './components/AgentPanel.vue'
+const BackgroundMusic = defineAsyncComponent(() => import('./components/BackgroundMusic.vue'))
+const AchievementToast = defineAsyncComponent(() => import('./components/AchievementToast.vue'))
+const AgentPanel = defineAsyncComponent(() => import('./components/AgentPanel.vue'))
+import { useTheme, type ThemeMode } from './theme'
 
 const { locale, t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuth()
 const mobileNavOpen = ref(false)
+const routeLoadFailed = ref(false)
+const { themeMode, setTheme } = useTheme()
 const nextLocaleLabel = computed(() => locale.value === 'zh-CN' ? 'EN' : '中')
 // 不参与常规导航展示的页面：登录/注册/关于。
 const isAuthFlowPage = computed(() => ['/login', '/register', '/about'].includes(route.path))
@@ -55,12 +58,22 @@ function closeMenuOnKeydown(event: KeyboardEvent) {
 onMounted(() => {
   document.addEventListener('pointerdown', closeMenuOnOutside)
   document.addEventListener('keydown', closeMenuOnKeydown)
+  window.addEventListener('terra:route-load-error', handleRouteLoadError)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('pointerdown', closeMenuOnOutside)
   document.removeEventListener('keydown', closeMenuOnKeydown)
+  window.removeEventListener('terra:route-load-error', handleRouteLoadError)
 })
+
+function handleRouteLoadError() {
+  routeLoadFailed.value = true
+}
+
+function reloadPage() {
+  window.location.reload()
+}
 
 function toggleLocale() {
   const nextLocale: SupportedLocale = locale.value === 'zh-CN' ? 'en-US' : 'zh-CN'
@@ -71,8 +84,11 @@ function toggleLocale() {
 
 async function logout() {
   mobileNavOpen.value = false
-  await auth.logout()
-  await router.push('/login')
+  try {
+    await auth.logout()
+  } finally {
+    await router.push('/login')
+  }
 }
 </script>
 
@@ -119,14 +135,26 @@ async function logout() {
       <button class="language-switch" :aria-label="nextLocaleLabel" @click="toggleLocale">
         {{ nextLocaleLabel }}
       </button>
+      <label class="theme-toggle">
+        <span class="sr-only">{{ t('theme.label') }}</span>
+        <select :value="themeMode" :aria-label="t('theme.label')" @change="setTheme(($event.target as HTMLSelectElement).value as ThemeMode)">
+          <option value="system">{{ t('theme.system') }}</option>
+          <option value="light">{{ t('theme.light') }}</option>
+          <option value="dark">{{ t('theme.dark') }}</option>
+        </select>
+      </label>
     </nav>
   </header>
 
   <main>
-    <RouterView />
+    <div v-if="routeLoadFailed" class="route-load-error" role="alert">
+      <span>{{ t('common.routeLoadFailed') }}</span>
+      <button type="button" @click="reloadPage">{{ t('common.reload') }}</button>
+    </div>
+    <RouterView :key="`${route.fullPath}:${auth.getSessionRevision()}:${auth.currentUser.value?.id ?? 'anonymous'}`" />
   </main>
 
-  <BackgroundMusic />
+  <BackgroundMusic v-if="!isAuthFlowPage" />
   <AchievementToast />
   <AgentPanel v-if="auth.currentUser.value" />
 

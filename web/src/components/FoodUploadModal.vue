@@ -3,6 +3,9 @@ import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { createFood, uploadImage } from '../api'
+import { apiErrorMessage } from '../apiError'
+import { useAuth } from '../auth'
+import FoodTagPicker from './FoodTagPicker.vue'
 import {
   cacheDraftImage,
   clearDraft,
@@ -48,6 +51,7 @@ const form = reactive<UploadForm>({
   story: '',
   ingredients: '',
   remark: '',
+  tagIds: [],
 })
 
 const image = ref<File>()
@@ -56,7 +60,13 @@ const previewUrl = ref('')
 const coverInput = ref<HTMLInputElement>()
 const saving = ref(false)
 const error = ref('')
+const stage = ref<'idle' | 'uploading' | 'saving'>('idle')
 const { t } = useI18n()
+const auth = useAuth()
+const accountId = auth.currentUser.value?.id
+const DRAFT_KEY = `foodUpload.v2.${accountId}`
+const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000
+let uploadController: AbortController | undefined
 
 watch(
   () => [props.latitude, props.longitude],
@@ -87,8 +97,6 @@ watch(
 )
 
 // 草稿缓存：文本字段在误关弹窗后保留；坐标/地区/地址永远跟随地图选点（props），不参与草稿。
-const DRAFT_KEY = 'foodUpload'
-
 interface UploadDraft {
   name: string
   summary: string
@@ -96,15 +104,26 @@ interface UploadDraft {
   story: string
   remark: string
   image?: DraftImageMeta
+  imageUrl?: string
+  idempotencyKey: string
+  tagIds?: number[]
+  expiresAt: number
 }
 
-const draft = readDraft<UploadDraft>(DRAFT_KEY)
+let draft = readDraft<UploadDraft>(DRAFT_KEY)
+if (draft && (!Number.isFinite(draft.expiresAt) || draft.expiresAt <= Date.now())) {
+  clearDraft(DRAFT_KEY)
+  draft = undefined
+}
+const idempotencyKey = ref(draft?.idempotencyKey || crypto.randomUUID())
 if (draft) {
   form.name = draft.name
   form.summary = draft.summary
   form.ingredients = draft.ingredients
   form.story = draft.story
   form.remark = draft.remark
+  form.imageUrl = draft.imageUrl
+  form.tagIds = draft.tagIds || []
   if (draft.image) {
     imageMeta.value = draft.image
     const cachedImage = getCachedDraftImage(DRAFT_KEY)
@@ -123,15 +142,23 @@ function persistDraft() {
     story: form.story,
     remark: form.remark,
     image: imageMeta.value,
+    imageUrl: form.imageUrl,
+    idempotencyKey: idempotencyKey.value,
+    tagIds: form.tagIds,
+    expiresAt: Date.now() + DRAFT_TTL_MS,
   })
 }
 
 watch(
-  () => [form.name, form.summary, form.ingredients, form.story, form.remark, imageMeta.value],
-  persistDraft,
+  () => [{ ...form, tagIds: [...(form.tagIds || [])] }, imageMeta.value],
+  () => {
+    idempotencyKey.value = crypto.randomUUID()
+    persistDraft()
+  },
 )
 
 onBeforeUnmount(() => {
+  uploadController?.abort()
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
 })
 
@@ -142,14 +169,27 @@ function selectImage(event: Event) {
   input.value = ''
   if (!file) return
 
+  const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
+  if (file.size > 5 * 1024 * 1024) {
+    error.value = t('upload.imageTooLarge')
+    return
+  }
+  if (!allowedTypes.has(file.type)) {
+    error.value = t('upload.imageInvalidType')
+    return
+  }
+
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
   image.value = file
+  form.imageUrl = undefined
+  idempotencyKey.value = crypto.randomUUID()
   imageMeta.value = { name: file.name, type: file.type, size: file.size }
   previewUrl.value = URL.createObjectURL(file)
   cacheDraftImage(DRAFT_KEY, file)
 }
 
 async function submit() {
+  if (saving.value) return
   error.value = ''
 
   // 坐标必须来自地图选点，禁止带着默认值直接创建。
@@ -162,26 +202,43 @@ async function submit() {
   saving.value = true
   try {
     // 图片与菜品信息分两步提交：先取得资源 URL，再保存稳定的业务记录。
-    if (image.value) {
-      form.imageUrl = await uploadImage(image.value)
+    if (image.value && !form.imageUrl) {
+      stage.value = 'uploading'
+      uploadController = new AbortController()
+      form.imageUrl = await uploadImage(image.value, uploadController.signal)
+      uploadController = undefined
+      persistDraft()
     }
 
-    const food = await createFood({
+    stage.value = 'saving'
+    const submissionKey = idempotencyKey.value
+    const payload = {
       ...form,
       latitude: form.latitude as number,
       longitude: form.longitude as number,
-    })
+    }
+    const food = await createFood(payload, submissionKey)
     if (food.reviewStatus === 'PENDING') {
       window.alert(t('upload.pendingSuccess'))
     }
-    clearDraft(DRAFT_KEY)
-    forgetDraftImage(DRAFT_KEY)
+    if (submissionKey === idempotencyKey.value) {
+      clearDraft(DRAFT_KEY)
+      forgetDraftImage(DRAFT_KEY)
+    }
     emit('saved', food)
-  } catch {
-    error.value = t('upload.saveError')
+  } catch (requestError) {
+    error.value = apiErrorMessage(requestError, stage.value === 'uploading'
+      ? t('upload.imageUploadError')
+      : t('upload.saveError'))
   } finally {
     saving.value = false
+    stage.value = 'idle'
+    uploadController = undefined
   }
+}
+
+function cancelUpload() {
+  uploadController?.abort()
 }
 </script>
 
@@ -197,6 +254,11 @@ async function submit() {
       </div>
 
       <form @submit.prevent="submit">
+        <p v-if="stage !== 'idle'" class="form-status" role="status">
+          {{ stage === 'uploading' ? t('upload.uploadingImage') : t('upload.savingFood') }}
+          <button v-if="stage === 'uploading'" type="button" @click="cancelUpload">{{ t('upload.cancelUpload') }}</button>
+        </p>
+        <fieldset class="submit-snapshot" :disabled="saving">
         <div class="form-grid">
           <label>
             {{ t('upload.name') }}
@@ -232,6 +294,7 @@ async function submit() {
           {{ t('upload.ingredients') }}
           <input v-model="form.ingredients" required maxlength="500">
         </label>
+        <FoodTagPicker v-model="form.tagIds" :disabled="saving" />
         <label>
           {{ t('upload.story') }}
           <textarea v-model="form.story" required rows="4"></textarea>
@@ -248,9 +311,10 @@ async function submit() {
               class="hidden-file-input"
               type="file"
               accept="image/jpeg,image/png,image/webp"
+              :disabled="saving"
               @change="selectImage"
             >
-            <button type="button" class="cover-pick" @click="coverInput?.click()">
+            <button type="button" class="cover-pick" :disabled="saving" @click="coverInput?.click()">
               {{ image ? t('upload.changeCover') : t('upload.pickCover') }}
             </button>
           </div>
@@ -258,6 +322,7 @@ async function submit() {
           <small v-if="imageMeta && !image" class="cover-warning">{{ t('upload.imageNeedsReselect') }}</small>
           <small>{{ t('upload.imageTip') }}</small>
         </div>
+        </fieldset>
 
         <p v-if="error" class="form-error">{{ error }}</p>
 

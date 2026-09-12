@@ -13,6 +13,9 @@ import {
   setUserActive,
   setUserRole,
   reviewFood,
+  getAdminFoodTags,
+  updateAdminFoodTag,
+  mergeAdminFoodTag,
 } from '../api'
 import { useAuth } from '../auth'
 import type {
@@ -23,9 +26,10 @@ import type {
   PendingReview,
   Region,
   ReviewItemStatus,
+  FoodTag,
 } from '../types'
 
-type AdminTab = 'foods' | 'reviews' | 'users'
+type AdminTab = 'foods' | 'reviews' | 'tags' | 'users'
 type PageSize = 10 | 20 | 50
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
@@ -36,6 +40,10 @@ const activeTab = ref<AdminTab>('foods')
 const foods = ref<Food[]>([])
 const regions = ref<Region[]>([])
 const users = ref<AuthUser[]>([])
+const foodTags = ref<FoodTag[]>([])
+const foodTagsTotal = ref(0)
+const foodTagsLoading = ref(false)
+const tagStatus = ref('PENDING')
 const foodsTotal = ref(0)
 const pendingFoodTotal = ref(0)
 const totalHeat = ref(0)
@@ -85,9 +93,48 @@ function switchTab(tab: AdminTab) {
   // 每次进入用户标签都重新拉取，避免长时间停留在后台时显示挂载时的陈旧数据。
   if (tab === 'users') {
     void loadUsersPage(1, usersPageSize.value)
+  } else if (tab === 'tags') {
+    void loadFoodTags()
   } else {
     void loadFoodsPage(1, foodsPageSize.value)
   }
+}
+
+async function loadFoodTags() {
+  foodTagsLoading.value = true
+  error.value = ''
+  try {
+    const result = await getAdminFoodTags({ status: tagStatus.value || undefined, pageSize: 50 })
+    foodTags.value = result.items
+    foodTagsTotal.value = result.total
+  } catch { error.value = t('admin.tagLoadError') }
+  finally { foodTagsLoading.value = false }
+}
+
+async function setTagStatus(tag: FoodTag, status: FoodTag['status']) {
+  const reason = status === 'REJECTED' ? window.prompt(t('admin.tagRejectReason'))?.trim() : undefined
+  if (status === 'REJECTED' && !reason) return
+  try {
+    await updateAdminFoodTag(tag.id, { type: tag.type, name: tag.name, status, reason, version: tag.version })
+    await loadFoodTags()
+  } catch { error.value = t('admin.tagUpdateError') }
+}
+
+async function renameTag(tag: FoodTag) {
+  const name = window.prompt(t('admin.tagRenamePrompt'), tag.name)?.trim()
+  if (!name || name === tag.name) return
+  try {
+    await updateAdminFoodTag(tag.id, { type: tag.type, name, status: tag.status, version: tag.version })
+    await loadFoodTags()
+  } catch { error.value = t('admin.tagUpdateError') }
+}
+
+async function mergeTag(tag: FoodTag) {
+  const raw = window.prompt(t('admin.tagMergePrompt'))
+  const targetId = Number(raw)
+  if (!Number.isSafeInteger(targetId) || targetId <= 0) return
+  try { await mergeAdminFoodTag(tag.id, targetId, tag.version); await loadFoodTags() }
+  catch { error.value = t('admin.tagUpdateError') }
 }
 
 function formatDateTime(value: string) {
@@ -173,7 +220,7 @@ async function reviewSubmission(food: Food, status: Extract<FoodReviewStatus, 'A
 
   pendingFoodIds.value.add(food.id)
   try {
-    await reviewFood(food.id, { status })
+    await reviewFood(food.id, { status, expectedVersion: food.contentVersion })
     await loadFoodsPage(foodsPage.value, foodsPageSize.value)
   } catch {
     error.value = t('admin.reviewError')
@@ -292,7 +339,7 @@ async function reviewItemSubmission(item: PendingReview, status: Extract<ReviewI
   usersLoading.value = true
   usersError.value = ''
   try {
-    await reviewUserItem(targetUser.id, { field: item.field, status })
+    await reviewUserItem(targetUser.id, { field: item.field, status, expectedVersion: item.version })
     reviewingUser.value = null
     await loadUsersPage(usersPage.value, usersPageSize.value)
   } catch {
@@ -419,13 +466,16 @@ onMounted(loadFoodsAndMeta)
       <button class="admin-tab" :class="{ active: activeTab === 'reviews' }" type="button" @click="switchTab('reviews')">
         {{ t('admin.tabReviews') }}（{{ pendingFoodTotal }}）
       </button>
+      <button class="admin-tab" :class="{ active: activeTab === 'tags' }" type="button" @click="switchTab('tags')">
+        {{ t('admin.tabTags') }}
+      </button>
       <button class="admin-tab" :class="{ active: activeTab === 'users' }" type="button" @click="switchTab('users')">
         {{ t('admin.tabUsers') }}
       </button>
     </div>
 
     <section class="admin-table-card">
-      <template v-if="activeTab !== 'users'">
+      <template v-if="activeTab === 'foods' || activeTab === 'reviews'">
         <div class="admin-table-title">
           <div>
             <h2>{{ activeTab === 'reviews' ? t('admin.reviewManagement') : t('admin.foodManagement') }}</h2>
@@ -525,6 +575,20 @@ onMounted(loadFoodsAndMeta)
             </div>
           </div>
         </template>
+      </template>
+
+      <template v-else-if="activeTab === 'tags'">
+        <div class="admin-table-title">
+          <div><h2>{{ t('admin.tagManagement') }}</h2><span>{{ t('admin.recordCount', { count: foodTagsTotal }) }}</span></div>
+          <label>{{ t('admin.status') }}
+            <select v-model="tagStatus" @change="loadFoodTags"><option value="">{{ t('admin.all') }}</option><option value="PENDING">{{ t('admin.pending') }}</option><option value="APPROVED">{{ t('admin.approved') }}</option><option value="REJECTED">{{ t('admin.rejected') }}</option><option value="DISABLED">{{ t('admin.disabled') }}</option></select>
+          </label>
+        </div>
+        <p v-if="foodTagsLoading" class="state">{{ t('admin.loading') }}</p>
+        <p v-else-if="error" class="state error">{{ error }}</p>
+        <div v-else class="admin-table-wrap"><table><thead><tr><th>ID</th><th>{{ t('admin.tagName') }}</th><th>{{ t('admin.tagType') }}</th><th>{{ t('admin.status') }}</th><th>{{ t('admin.createdAt') }}</th><th>{{ t('admin.actions') }}</th></tr></thead>
+          <tbody><tr v-for="tag in foodTags" :key="tag.id"><td>{{ tag.id }}</td><td><strong>{{ tag.name }}</strong></td><td>{{ t(`home.tagType${tag.type}`) }}</td><td>{{ tag.status }}</td><td>{{ formatDateTime(tag.createdAt) }}</td><td><div class="admin-user-actions"><button v-if="tag.status === 'PENDING'" class="admin-user-action" @click="setTagStatus(tag, 'APPROVED')">{{ t('admin.approve') }}</button><button v-if="tag.status === 'PENDING'" class="danger-button" @click="setTagStatus(tag, 'REJECTED')">{{ t('admin.reject') }}</button><button class="admin-user-action" @click="renameTag(tag)">{{ t('admin.rename') }}</button><button v-if="tag.status !== 'MERGED'" class="admin-user-action" @click="mergeTag(tag)">{{ t('admin.merge') }}</button><button v-if="canManageRoles && tag.status !== 'DISABLED'" class="danger-button" @click="setTagStatus(tag, 'DISABLED')">{{ t('admin.disable') }}</button></div></td></tr></tbody>
+        </table></div>
       </template>
 
       <template v-else>

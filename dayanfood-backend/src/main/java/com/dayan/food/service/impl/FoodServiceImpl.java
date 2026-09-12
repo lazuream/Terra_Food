@@ -13,10 +13,16 @@ import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.entity.vo.FoodFootprintVO;
 import com.dayan.food.entity.vo.FoodMarkerVO;
 import com.dayan.food.entity.vo.FoodPageVO;
+import com.dayan.food.entity.vo.FoodMapResultsVO;
+import com.dayan.food.entity.vo.FoodMapClustersVO;
+import com.dayan.food.entity.vo.FoodMapClusterItemVO;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FoodMapper;
 import com.dayan.food.mapper.RegionMapper;
 import com.dayan.food.service.FoodService;
+import com.dayan.food.service.FoodTagService;
+import com.dayan.food.service.DiscoveryCountService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
@@ -26,31 +32,46 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.text.Normalizer;
 
 @Service
 public class FoodServiceImpl implements FoodService {
 
     private static final int MAP_RESULT_LIMIT = 500;
     private static final int CATALOG_MAX_PAGE_SIZE = 500;
+    private static final int MAP_CLUSTER_LIMIT = 300;
+    private final java.util.concurrent.atomic.AtomicLong discoveryVersion = new java.util.concurrent.atomic.AtomicLong(1);
 
     private final FoodMapper foodMapper;
     private final RegionMapper regionMapper;
     private final AppUserMapper appUserMapper;
     private final CacheManager cacheManager;
     private final CacheInvalidator cacheInvalidator;
+    private final FoodTagService foodTagService;
+    private final DiscoveryCountService discoveryCountService;
 
+    @Autowired
     public FoodServiceImpl(
             FoodMapper foodMapper,
             RegionMapper regionMapper,
             AppUserMapper appUserMapper,
             CacheManager cacheManager,
-            CacheInvalidator cacheInvalidator
+            CacheInvalidator cacheInvalidator,
+            FoodTagService foodTagService,
+            DiscoveryCountService discoveryCountService
     ) {
         this.foodMapper = foodMapper;
         this.regionMapper = regionMapper;
         this.appUserMapper = appUserMapper;
         this.cacheManager = cacheManager;
         this.cacheInvalidator = cacheInvalidator;
+        this.foodTagService = foodTagService;
+        this.discoveryCountService = discoveryCountService;
+    }
+
+    public FoodServiceImpl(FoodMapper foodMapper, RegionMapper regionMapper, AppUserMapper appUserMapper,
+                           CacheManager cacheManager, CacheInvalidator cacheInvalidator) {
+        this(foodMapper, regionMapper, appUserMapper, cacheManager, cacheInvalidator, null, null);
     }
 
     @Override
@@ -86,13 +107,6 @@ public class FoodServiceImpl implements FoodService {
                 ).stream()
                 .map(FoodVO::from)
                 .toList();
-    }
-
-    @Override
-    @Cacheable(cacheNames = "wishlistMatchCatalog", key = "'approved'")
-    @Transactional(readOnly = true)
-    public List<FoodVO> matchingCatalog() {
-        return foodMapper.findApprovedForMatching().stream().map(FoodVO::from).toList();
     }
 
     @Override
@@ -165,6 +179,78 @@ public class FoodServiceImpl implements FoodService {
     }
 
     @Override
+    @Cacheable(cacheNames = "foodDiscoveryCatalog",
+            condition = "#page <= 3", sync = true)
+    @Transactional(readOnly = true)
+    public FoodCatalogVO filteredCatalog(String keyword, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, String sort,
+            BigDecimal minLatitude, BigDecimal maxLatitude, BigDecimal minLongitude,
+            BigDecimal maxLongitude, int page, int pageSize, boolean compact) {
+        SearchInput input = searchInput(keyword, tasteIds, ingredientIds, cuisineIds, sort,
+                minLatitude, maxLatitude, minLongitude, maxLongitude);
+        int size = Math.min(Math.max(pageSize, 1), 50);
+        int total = discoveryCount(input.tokens(), regionId, input.tasteIds(), input.ingredientIds(),
+                input.cuisineIds(), minLatitude, maxLatitude, minLongitude, maxLongitude);
+        int pages = Math.max(1, (int) Math.ceil((double) total / size));
+        int normalizedPage = Math.min(Math.max(page, 1), pages);
+        var records = compact ? foodMapper.findFilteredCatalogCards(input.keyword(), input.tokens(),
+                        regionId, input.tasteIds(), input.ingredientIds(), input.cuisineIds(),
+                        minLatitude, maxLatitude, minLongitude, maxLongitude, input.sort(),
+                        (normalizedPage - 1) * size, size)
+                : foodMapper.findFilteredCatalogPage(input.keyword(), input.tokens(),
+                        regionId, input.tasteIds(), input.ingredientIds(), input.cuisineIds(),
+                        minLatitude, maxLatitude, minLongitude, maxLongitude, input.sort(),
+                        (normalizedPage - 1) * size, size);
+        List<FoodVO> items = records.stream()
+                .map(FoodVO::from).toList();
+        return new FoodCatalogVO(items, total, normalizedPage, size);
+    }
+
+    @Override
+    @Cacheable(cacheNames = "foodDiscoveryMap", condition = "#keyword == null || #keyword.isBlank()")
+    @Transactional(readOnly = true)
+    public FoodMapResultsVO filteredMap(String keyword, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, String sort,
+            BigDecimal minLatitude, BigDecimal maxLatitude, BigDecimal minLongitude,
+            BigDecimal maxLongitude) {
+        SearchInput input = searchInput(keyword, tasteIds, ingredientIds, cuisineIds, sort,
+                minLatitude, maxLatitude, minLongitude, maxLongitude);
+        int total = foodMapper.countFilteredCatalog(input.tokens(), regionId, input.tasteIds(),
+                input.ingredientIds(), input.cuisineIds(), minLatitude, maxLatitude,
+                minLongitude, maxLongitude);
+        List<FoodMarkerVO> items = foodMapper.findFilteredMarkers(input.keyword(), input.tokens(),
+                        regionId, input.tasteIds(), input.ingredientIds(), input.cuisineIds(),
+                        minLatitude, maxLatitude, minLongitude, maxLongitude, input.sort(),
+                        MAP_RESULT_LIMIT).stream().map(FoodMarkerVO::from).toList();
+        return new FoodMapResultsVO(items, total, total > items.size());
+    }
+
+    @Override
+    @Cacheable(cacheNames = "foodDiscoveryMap", sync = true)
+    @Transactional(readOnly = true)
+    public FoodMapClustersVO mapClusters(String keyword, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, BigDecimal minLatitude,
+            BigDecimal maxLatitude, BigDecimal minLongitude, BigDecimal maxLongitude, int zoom) {
+        SearchInput input = searchInput(keyword, tasteIds, ingredientIds, cuisineIds, "RELEVANCE",
+                minLatitude, maxLatitude, minLongitude, maxLongitude);
+        int total = discoveryCount(input.tokens(), regionId, input.tasteIds(), input.ingredientIds(),
+                input.cuisineIds(), minLatitude, maxLatitude, minLongitude, maxLongitude);
+        int effectiveZoom = Math.min(Math.max(zoom, 1), 18);
+        List<com.dayan.food.entity.po.FoodMapClusterRow> rows;
+        do {
+            rows = foodMapper.findMapClusters(input.tokens(), regionId, input.tasteIds(),
+                    input.ingredientIds(), input.cuisineIds(), minLatitude, maxLatitude,
+                    minLongitude, maxLongitude, effectiveZoom, MAP_CLUSTER_LIMIT + 1);
+            if (rows.size() <= MAP_CLUSTER_LIMIT || effectiveZoom == 1) break;
+            effectiveZoom--;
+        } while (true);
+        int resultZoom = effectiveZoom;
+        var items = rows.stream().limit(MAP_CLUSTER_LIMIT)
+                .map(row -> FoodMapClusterItemVO.from(row, resultZoom)).toList();
+        return new FoodMapClustersVO(discoveryVersion.get(), total, effectiveZoom, items);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public FoodPageVO listForAdmin(int page, int pageSize, FoodReviewStatus status) {
         int normalizedPageSize = normalizePageSize(pageSize);
@@ -188,7 +274,9 @@ public class FoodServiceImpl implements FoodService {
     @Override
     @Transactional(readOnly = true)
     public List<FoodVO> listMine(String username) {
-        return foodMapper.findByCreatedBy(username).stream()
+        var owner = appUserMapper.findByUsername(username);
+        if (owner == null || !owner.isActive()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录用户不存在或已停用");
+        return foodMapper.findByCreatedBy(owner.getId()).stream()
                 .map(FoodVO::from)
                 .toList();
     }
@@ -230,7 +318,7 @@ public class FoodServiceImpl implements FoodService {
         if (owner == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录用户不存在");
         }
-        var existing = foodMapper.findOwnedById(id, username);
+        var existing = foodMapper.findOwnedById(id, owner.getId());
         if (existing == null) {
             throw notFound("只能编辑自己上传的菜品");
         }
@@ -243,7 +331,7 @@ public class FoodServiceImpl implements FoodService {
         String reviewedBy = null;
         int updated = foodMapper.updateOwnedDetails(
                 id,
-                username,
+                owner.getId(),
                 request.name().trim(),
                 request.regionId(),
                 request.latitude(),
@@ -260,13 +348,14 @@ public class FoodServiceImpl implements FoodService {
         if (updated != 1) {
             throw notFound("只能编辑自己上传的菜品");
         }
+        if (foodTagService != null && request.tagIds() != null) foodTagService.replaceFoodTags(id, request.tagIds(), username);
         Long previousRegionId = existing.getRegion() == null ? null : existing.getRegion().getId();
         if (!java.util.Objects.equals(previousRegionId, request.regionId())) {
             // Imported labels override region labels; discard them when the region changes.
             foodMapper.updateLocationLabels(id, null, null);
         }
         clearFoodCaches(id);
-        return FoodVO.from(foodMapper.findOwnedById(id, username));
+        return FoodVO.from(foodMapper.findOwnedById(id, owner.getId()));
     }
 
     @Override
@@ -277,7 +366,7 @@ public class FoodServiceImpl implements FoodService {
         if (food == null) {
             throw notFound("美食不存在");
         }
-        return FoodVO.from(food, appUserMapper.findByUsername(food.getCreatedBy()));
+        return FoodVO.from(food, food.getCreatedByUserId() == null ? null : appUserMapper.findById(food.getCreatedByUserId()));
     }
 
     @Override
@@ -303,12 +392,12 @@ public class FoodServiceImpl implements FoodService {
 
     @Override
     @Transactional
-    public void review(Long id, FoodReviewStatus status, String reviewedBy) {
+    public void review(Long id, FoodReviewStatus status, long expectedVersion, String reviewedBy) {
         if (status != FoodReviewStatus.APPROVED && status != FoodReviewStatus.REJECTED) {
             throw new IllegalArgumentException("审批结果只能是通过或驳回");
         }
-        if (foodMapper.updateReviewStatus(id, status, reviewedBy) != 1) {
-            throw new IllegalArgumentException("待审批菜品不存在或已经处理");
+        if (foodMapper.updateReviewStatus(id, status, reviewedBy, expectedVersion) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "待审内容已变化，请刷新后重新审核");
         }
         clearFoodCaches(id);
     }
@@ -351,6 +440,7 @@ public class FoodServiceImpl implements FoodService {
                 normalizedImageUrl,
                 normalizeOptional(remark),
                 createdBy,
+                uploader.getId(),
                 uploader.getRole() == UserRole.ADMIN || uploader.getRole() == UserRole.SUB_ADMIN
                         ? FoodReviewStatus.APPROVED
                         : FoodReviewStatus.PENDING
@@ -360,7 +450,6 @@ public class FoodServiceImpl implements FoodService {
         cacheInvalidator.clear(cacheManager.getCache("foodLists"));
         cacheInvalidator.clear(cacheManager.getCache("foodCatalogs"));
         cacheInvalidator.clear(cacheManager.getCache("foodMarkers"));
-        cacheInvalidator.clear(cacheManager.getCache("wishlistMatchCatalog"));
         return FoodVO.from(food);
     }
 
@@ -382,7 +471,9 @@ public class FoodServiceImpl implements FoodService {
         // 保存选点城市到菜品本身，不调用地区创建逻辑。
         foodMapper.updateLocationLabels(created.id(),
                 normalizeOptional(request.province()), normalizeOptional(request.city()));
-        return FoodVO.from(foodMapper.findOwnedById(created.id(), username));
+        if (foodTagService != null) foodTagService.replaceFoodTags(created.id(), request.tagIds(), username);
+        var owner = appUserMapper.findByUsername(username);
+        return FoodVO.from(foodMapper.findOwnedById(created.id(), owner.getId()));
     }
 
     private ResponseStatusException notFound(String message) {
@@ -429,21 +520,59 @@ public class FoodServiceImpl implements FoodService {
     }
 
     private void clearFoodCaches(Long id) {
+        discoveryVersion.incrementAndGet();
         cacheInvalidator.invalidate(cacheManager.getCache("foodDetails"), id);
         cacheInvalidator.clear(cacheManager.getCache("foodLists"));
         cacheInvalidator.clear(cacheManager.getCache("foodCatalogs"));
         cacheInvalidator.clear(cacheManager.getCache("foodMarkers"));
-        cacheInvalidator.clear(cacheManager.getCache("wishlistMatchCatalog"));
+        cacheInvalidator.clear(cacheManager.getCache("foodDiscoveryCatalog"));
+        cacheInvalidator.clear(cacheManager.getCache("foodDiscoveryCounts"));
+        cacheInvalidator.clear(cacheManager.getCache("foodDiscoveryMap"));
+        cacheInvalidator.clear(cacheManager.getCache("wishlistMatches"));
     }
 
     private String normalizeKeyword(String keyword) {
         if (keyword == null || keyword.isBlank()) {
             return null;
         }
-        String normalized = keyword.trim();
+        String normalized = Normalizer.normalize(keyword.trim(), Normalizer.Form.NFKC)
+                .replaceAll("\\s+", " ");
         if (normalized.length() > 100) {
             throw new IllegalArgumentException("搜索关键词不能超过 100 个字符");
         }
         return normalized;
     }
+
+    private int discoveryCount(List<String> tokens, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, BigDecimal minLatitude,
+            BigDecimal maxLatitude, BigDecimal minLongitude, BigDecimal maxLongitude) {
+        if (discoveryCountService != null) return discoveryCountService.count(tokens, regionId, tasteIds,
+                ingredientIds, cuisineIds, minLatitude, maxLatitude, minLongitude, maxLongitude);
+        return foodMapper.countFilteredCatalog(tokens, regionId, tasteIds, ingredientIds, cuisineIds,
+                minLatitude, maxLatitude, minLongitude, maxLongitude);
+    }
+
+    private SearchInput searchInput(String keyword, List<Long> tasteIds, List<Long> ingredientIds,
+            List<Long> cuisineIds, String sort, BigDecimal minLatitude, BigDecimal maxLatitude,
+            BigDecimal minLongitude, BigDecimal maxLongitude) {
+        validateBounds(minLatitude, maxLatitude, minLongitude, maxLongitude);
+        String normalized = normalizeKeyword(keyword);
+        String normalizedSort = sort == null ? "RELEVANCE" : sort.trim().toUpperCase();
+        if (!List.of("RELEVANCE", "HEAT", "NEWEST").contains(normalizedSort)) {
+            throw new IllegalArgumentException("排序参数无效");
+        }
+        List<String> tokens = normalized == null ? List.of() : List.of(normalized.split(" "));
+        return new SearchInput(normalized, tokens, ids(tasteIds), ids(ingredientIds),
+                ids(cuisineIds), normalizedSort);
+    }
+
+    private List<Long> ids(List<Long> values) {
+        if (values == null) return List.of();
+        List<Long> result = values.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (result.size() > 10) throw new IllegalArgumentException("每个标签维度最多选择 10 项");
+        return result;
+    }
+
+    private record SearchInput(String keyword, List<String> tokens, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, String sort) {}
 }

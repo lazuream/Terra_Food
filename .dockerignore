@@ -1,0 +1,14 @@
+.git
+.github
+.mimosa
+.agents
+testkit
+evidence
+docs
+agent-service
+**/node_modules
+**/dist
+**/target
+**/*.log
+performance/.env
+performance/results

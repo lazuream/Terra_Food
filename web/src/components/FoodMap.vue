@@ -2,8 +2,9 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import L from 'leaflet'
+import { getFoodMapClusterMembers, type FoodQuery } from '../api'
 
-import type { FoodMarker, MapBounds, MapCoordinate, MapFocus } from '../types'
+import type { FoodMapClusterItem, MapBounds, MapCoordinate, MapFocus } from '../types'
 import 'leaflet/dist/leaflet.css'
 
 // 使用项目自身的朱砂标记，避免 Leaflet 默认图片路径在开发/生产环境中退化成破图。
@@ -23,7 +24,8 @@ const pickedLocationIcon = L.divIcon({
 })
 
 const props = defineProps<{
-  foods: FoodMarker[]
+  items: FoodMapClusterItem[]
+  filters: FoodQuery
   focus?: MapFocus
   pickedLocation?: MapCoordinate
 }>()
@@ -40,6 +42,7 @@ const mapReady = ref(false)
 const mapLoadError = ref(false)
 let map: L.Map | undefined
 let markerLayer: L.LayerGroup | undefined
+const renderedMarkers = new Map<string, { marker: L.Marker; signature: string }>()
 let pickedLocationMarker: L.Marker | undefined
 let tileLayer: L.TileLayer | undefined
 let annotationLayer: L.TileLayer | undefined
@@ -63,24 +66,18 @@ function tiandituTileUrl(layer: 'vec_w' | 'cva_w') {
   return `https://t{s}.tianditu.gov.cn/DataServer?T=${layer}&x={x}&y={y}&l={z}&tk=${encodeURIComponent(tiandituKey || '')}`
 }
 
-function createFoodPopup(food: FoodMarker) {
+function createFoodPopup(item: FoodMapClusterItem) {
   const popup = document.createElement('div')
   popup.className = 'map-popup'
 
   const name = document.createElement('strong')
-  name.textContent = food.name
-
-  const region = document.createElement('span')
-  region.textContent = food.region.province + ' · ' + food.region.name
-
-  const summary = document.createElement('p')
-  summary.textContent = food.summary
+  name.textContent = item.name || ''
 
   const detailLink = document.createElement('a')
-  detailLink.href = '/foods/' + food.id
+  detailLink.href = '/foods/' + item.foodId
   detailLink.textContent = t('map.detail')
 
-  popup.append(name, region, summary, detailLink)
+  popup.append(name, detailLink)
   return popup
 }
 
@@ -93,24 +90,40 @@ function createClusterIcon(count: number) {
   })
 }
 
-function createClusterPopup(foods: FoodMarker[]) {
+function createClusterPopup(item: FoodMapClusterItem) {
   const popup = document.createElement('div')
   popup.className = 'map-popup map-cluster-popup'
 
   const title = document.createElement('strong')
-  title.textContent = t('home.recordCount', { count: foods.length })
+  title.textContent = t('home.recordCount', { count: item.count })
+  const status = document.createElement('span')
+  status.textContent = t('home.loading')
   const list = document.createElement('ul')
-
-  foods.forEach((food) => {
-    const item = document.createElement('li')
-    const detailLink = document.createElement('a')
-    detailLink.href = '/foods/' + food.id
-    detailLink.textContent = food.name
-    item.append(detailLink)
-    list.append(item)
-  })
-
-  popup.append(title, list)
+  const more = document.createElement('button')
+  more.type = 'button'
+  more.textContent = t('home.loadMoreFavorites')
+  more.hidden = true
+  popup.append(title, status, list)
+  popup.append(more)
+  let currentPage = 0
+  const load = async () => {
+    more.disabled = true
+    const page = await getFoodMapClusterMembers(item, props.filters, currentPage + 1)
+    currentPage = page.page
+    status.remove()
+    page.items.forEach((food) => {
+      const row = document.createElement('li')
+      const link = document.createElement('a')
+      link.href = `/foods/${food.id}`
+      link.textContent = food.name
+      row.append(link)
+      list.append(row)
+    })
+    more.hidden = list.children.length >= page.total
+    more.disabled = false
+  }
+  more.addEventListener('click', () => { void load().catch(() => { more.disabled = false }) })
+  void load().catch(() => { status.textContent = t('home.loadError'); more.hidden = true })
   return popup
 }
 
@@ -119,63 +132,37 @@ function renderMarkers() {
     return
   }
 
-  const layer = markerLayer
-  layer.clearLayers()
-  const zoom = map.getZoom()
-  const cellSize = zoom <= 5 ? 58 : zoom <= 7 ? 48 : zoom <= 10 ? 40 : 30
-  const groups = new Map<string, { foods: FoodMarker[], latitude: number, longitude: number }>()
-
-  for (const food of props.foods) {
-    if (food.latitude == null || food.longitude == null) continue
-
-    const projected = map.project([food.latitude, food.longitude], zoom)
-    const key = Math.floor(projected.x / cellSize) + ':' + Math.floor(projected.y / cellSize)
-    const group = groups.get(key)
-    if (group) {
-      group.foods.push(food)
-      group.latitude += food.latitude
-      group.longitude += food.longitude
-    } else {
-      groups.set(key, {
-        foods: [food],
-        latitude: food.latitude,
-        longitude: food.longitude,
-      })
+  const nextIds = new Set(props.items.map((item) => item.id))
+  renderedMarkers.forEach((entry, id) => {
+    if (!nextIds.has(id)) {
+      markerLayer!.removeLayer(entry.marker)
+      renderedMarkers.delete(id)
     }
-  }
-
-  groups.forEach((group) => {
-    const count = group.foods.length
-    const position: L.LatLngExpression = [
-      group.latitude / count,
-      group.longitude / count,
-    ]
-    if (count === 1) {
-      L.marker(position, { icon: foodMarkerIcon })
-        .bindPopup(createFoodPopup(group.foods[0]))
-        .addTo(layer)
+  })
+  props.items.forEach((item) => {
+    const signature = [item.kind, item.count, item.foodId || '', item.name || '', item.latitude,
+      item.longitude, item.minLatitude, item.maxLatitude, item.minLongitude, item.maxLongitude,
+      locale.value].join(':')
+    const existing = renderedMarkers.get(item.id)
+    if (existing && existing.signature === signature) {
+      existing.marker.setLatLng([item.latitude, item.longitude])
       return
     }
-
-    const memberPositions = group.foods.map(
-      (food) => L.latLng(food.latitude, food.longitude),
-    )
-    const memberBounds = L.latLngBounds(memberPositions)
-    const samePosition = memberBounds.getNorthEast().equals(memberBounds.getSouthWest())
-    const clusterMarker = L.marker(position, { icon: createClusterIcon(count) })
-
-    if (samePosition || zoom >= 14) {
-      clusterMarker.bindPopup(createClusterPopup(group.foods))
+    if (existing) markerLayer!.removeLayer(existing.marker)
+    const marker = L.marker([item.latitude, item.longitude], {
+      icon: item.kind === 'POINT' ? foodMarkerIcon : createClusterIcon(item.count),
+    })
+    if (item.kind === 'POINT') {
+      marker.bindPopup(() => createFoodPopup(item))
+    } else if (map!.getZoom() >= 16 || (item.minLatitude === item.maxLatitude && item.minLongitude === item.maxLongitude)) {
+      marker.bindPopup(() => createClusterPopup(item))
     } else {
-      clusterMarker.on('click', () => {
-        map?.fitBounds(memberBounds.pad(0.3), {
-          animate: true,
-          duration: 0.65,
-          maxZoom: Math.min(zoom + 3, 14),
-        })
-      })
+      marker.on('click', () => map?.fitBounds([
+        [item.minLatitude, item.minLongitude], [item.maxLatitude, item.maxLongitude],
+      ], { animate: true, duration: 0.45, maxZoom: Math.min(map!.getZoom() + 3, 16) }))
     }
-    clusterMarker.addTo(layer)
+    markerLayer!.addLayer(marker)
+    renderedMarkers.set(item.id, { marker, signature })
   })
 }
 
@@ -201,7 +188,6 @@ function renderPickedLocation() {
 
 function emitCurrentBounds() {
   if (!map) return
-  renderMarkers()
   const bounds = map.getBounds()
   emit('boundsChange', {
     minLatitude: Math.max(bounds.getSouth(), chinaDataBounds.getSouth()),
@@ -363,7 +349,12 @@ onMounted(async () => {
   mountFrame = requestAnimationFrame(initializeMap)
 })
 
-watch([() => props.foods, locale], renderMarkers, { deep: true })
+watch(() => props.items, renderMarkers)
+watch(locale, () => {
+  renderedMarkers.forEach((entry) => entry.marker.remove())
+  renderedMarkers.clear()
+  renderMarkers()
+})
 watch(() => props.pickedLocation, renderPickedLocation, { deep: true })
 watch(
   () => props.focus,

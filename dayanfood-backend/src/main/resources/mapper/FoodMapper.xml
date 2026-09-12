@@ -14,12 +14,17 @@
         <result property="story" column="story"/>
         <result property="ingredients" column="ingredients"/>
         <result property="imageUrl" column="image_url"/>
+        <result property="imageSmallUrl" column="image_small_url"/>
+        <result property="imageMediumUrl" column="image_medium_url"/>
+        <result property="imageLargeUrl" column="image_large_url"/>
         <result property="remark" column="remark"/>
         <result property="heat" column="heat"/>
         <result property="reviewStatus" column="review_status" javaType="com.dayan.food.entity.enums.FoodReviewStatus"/>
+        <result property="contentVersion" column="content_version"/>
         <result property="reviewedBy" column="reviewed_by"/>
         <result property="reviewedAt" column="reviewed_at"/>
         <result property="createdBy" column="created_by"/>
+        <result property="createdByUserId" column="created_by_user_id"/>
         <result property="createdAt" column="created_at"/>
         <association property="region" javaType="com.dayan.food.entity.po.Region">
             <id property="id" column="region_id"/>
@@ -57,12 +62,17 @@
         f.story,
         f.ingredients,
         f.image_url,
+        (SELECT ia.variant_320_url FROM image_asset ia WHERE ia.original_url=f.image_url AND ia.status='READY') AS image_small_url,
+        (SELECT ia.variant_640_url FROM image_asset ia WHERE ia.original_url=f.image_url AND ia.status='READY') AS image_medium_url,
+        (SELECT ia.variant_1280_url FROM image_asset ia WHERE ia.original_url=f.image_url AND ia.status='READY') AS image_large_url,
         f.remark,
         f.heat,
         f.review_status,
+        f.content_version,
         f.reviewed_by,
         f.reviewed_at,
         f.created_by,
+        f.created_by_user_id,
         f.created_at,
         r.id AS region_id,
         COALESCE(NULLIF(f.city, ''), r.name) AS region_name,
@@ -74,7 +84,12 @@
     <sql id="listConditions">
         f.review_status = 'APPROVED'
         <if test="keyword != null and keyword != ''">
-            AND LOWER(f.name) LIKE CONCAT('%', LOWER(#{keyword}), '%')
+            AND (
+                INSTR(LOWER(f.name), LOWER(#{keyword})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.ingredients, '')), LOWER(#{keyword})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.city, '')), LOWER(#{keyword})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.province, '')), LOWER(#{keyword})) &gt; 0
+            )
         </if>
         <if test="regionId != null">
             AND f.region_id = #{regionId}
@@ -142,6 +157,132 @@
         </where>
     </select>
 
+    <!-- Advanced discovery uses one condition fragment for catalog, count and map. Each
+         keyword token must match at least one supported field. INSTR keeps %, _ and other
+         user characters literal instead of turning them into SQL wildcards. -->
+    <sql id="filteredConditions">
+        f.review_status = 'APPROVED'
+        <if test="tokens != null and !tokens.isEmpty()">
+            <foreach collection="tokens" item="token">
+                AND (
+                    INSTR(LOWER(f.name), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(f.ingredients, '')), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(f.city, '')), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(f.province, '')), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(r.name, '')), LOWER(#{token})) &gt; 0
+                    OR INSTR(LOWER(COALESCE(r.province, '')), LOWER(#{token})) &gt; 0
+                    OR EXISTS (
+                        SELECT 1 FROM food_alias fa
+                        WHERE fa.food_id = f.id
+                          AND INSTR(LOWER(fa.alias), LOWER(#{token})) &gt; 0
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM food_tag_link fft
+                        INNER JOIN food_tag ft ON ft.id = fft.tag_id AND ft.status = 'APPROVED'
+                        LEFT JOIN food_tag_alias fta ON fta.tag_id = ft.id
+                        WHERE fft.food_id = f.id
+                          AND (INSTR(LOWER(ft.name), LOWER(#{token})) &gt; 0
+                            OR INSTR(LOWER(COALESCE(fta.alias, '')), LOWER(#{token})) &gt; 0)
+                    )
+                )
+            </foreach>
+        </if>
+        <if test="regionId != null">AND f.region_id = #{regionId}</if>
+        <if test="tasteIds != null and !tasteIds.isEmpty()">
+            AND EXISTS (SELECT 1 FROM food_tag_link x INNER JOIN food_tag t ON t.id=x.tag_id
+                WHERE x.food_id=f.id AND t.status='APPROVED' AND t.type='TASTE'
+                AND t.id IN <foreach collection="tasteIds" item="id" open="(" close=")" separator=",">#{id}</foreach>)
+        </if>
+        <if test="ingredientIds != null and !ingredientIds.isEmpty()">
+            AND EXISTS (SELECT 1 FROM food_tag_link x INNER JOIN food_tag t ON t.id=x.tag_id
+                WHERE x.food_id=f.id AND t.status='APPROVED' AND t.type='INGREDIENT'
+                AND t.id IN <foreach collection="ingredientIds" item="id" open="(" close=")" separator=",">#{id}</foreach>)
+        </if>
+        <if test="cuisineIds != null and !cuisineIds.isEmpty()">
+            AND EXISTS (SELECT 1 FROM food_tag_link x INNER JOIN food_tag t ON t.id=x.tag_id
+                WHERE x.food_id=f.id AND t.status='APPROVED' AND t.type='CUISINE'
+                AND t.id IN <foreach collection="cuisineIds" item="id" open="(" close=")" separator=",">#{id}</foreach>)
+        </if>
+        <if test="minLatitude != null and maxLatitude != null and minLongitude != null and maxLongitude != null">
+            AND f.latitude BETWEEN #{minLatitude} AND #{maxLatitude}
+            <choose><when test="minLongitude &lt;= maxLongitude">AND f.longitude BETWEEN #{minLongitude} AND #{maxLongitude}</when>
+            <otherwise>AND (f.longitude &gt;= #{minLongitude} OR f.longitude &lt;= #{maxLongitude})</otherwise></choose>
+        </if>
+    </sql>
+
+    <sql id="filteredOrder">
+        <choose>
+            <when test="sort == 'NEWEST'">f.created_at DESC, f.id DESC</when>
+            <when test="sort == 'HEAT' or keyword == null or keyword == ''">f.heat DESC, f.id DESC</when>
+            <otherwise>
+                CASE
+                    WHEN LOWER(f.name) = LOWER(#{keyword}) THEN 0
+                    WHEN EXISTS (SELECT 1 FROM food_alias fa WHERE fa.food_id=f.id AND LOWER(fa.alias)=LOWER(#{keyword})) THEN 1
+                    WHEN LOWER(LEFT(f.name, CHAR_LENGTH(#{keyword}))) = LOWER(#{keyword}) THEN 2
+                    WHEN INSTR(LOWER(f.name), LOWER(#{keyword})) &gt; 0 THEN 3
+                    WHEN EXISTS (SELECT 1 FROM food_tag_link fft INNER JOIN food_tag ft ON ft.id=fft.tag_id AND ft.status='APPROVED'
+                        WHERE fft.food_id=f.id AND INSTR(LOWER(ft.name), LOWER(#{keyword})) &gt; 0) THEN 4
+                    ELSE 5
+                END, f.heat DESC, f.id DESC
+            </otherwise>
+        </choose>
+    </sql>
+
+    <select id="findFilteredCatalogPage" resultMap="foodResultMap">
+        SELECT <include refid="foodColumns"/> FROM food f
+        LEFT JOIN region r ON r.id=f.region_id
+        <where><include refid="filteredConditions"/></where>
+        ORDER BY <include refid="filteredOrder"/>
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="findFilteredCatalogCards" resultMap="foodResultMap">
+        SELECT f.id AS food_id, f.name AS food_name, f.latitude, f.longitude, f.summary, f.image_url,
+          (SELECT ia.variant_320_url FROM image_asset ia WHERE ia.original_url=f.image_url AND ia.status='READY') AS image_small_url,
+          (SELECT ia.variant_640_url FROM image_asset ia WHERE ia.original_url=f.image_url AND ia.status='READY') AS image_medium_url,
+          (SELECT ia.variant_1280_url FROM image_asset ia WHERE ia.original_url=f.image_url AND ia.status='READY') AS image_large_url,
+          f.heat, f.review_status, f.created_by, f.created_at, r.id AS region_id,
+          COALESCE(NULLIF(f.city,''),r.name) AS region_name,
+          COALESCE(NULLIF(f.province,''),r.province) AS region_province,
+          r.description AS region_description
+        FROM food f LEFT JOIN region r ON r.id=f.region_id
+        <where><include refid="filteredConditions"/></where>
+        ORDER BY <include refid="filteredOrder"/>
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="findFilteredMarkers" resultMap="markerResultMap">
+        SELECT f.id AS food_id, f.name AS food_name, f.latitude, f.longitude, f.summary,
+               r.id AS region_id, COALESCE(NULLIF(f.city, ''), r.name) AS region_name,
+               COALESCE(NULLIF(f.province, ''), r.province) AS region_province
+        FROM food f LEFT JOIN region r ON r.id=f.region_id
+        <where><include refid="filteredConditions"/></where>
+        ORDER BY <include refid="filteredOrder"/>
+        LIMIT #{limit}
+    </select>
+
+    <select id="countFilteredCatalog" resultType="int">
+        SELECT COUNT(*) FROM food f LEFT JOIN region r ON r.id=f.region_id
+        <where><include refid="filteredConditions"/></where>
+    </select>
+
+    <select id="findMapClusters" resultType="com.dayan.food.entity.po.FoodMapClusterRow">
+        SELECT
+          FLOOR((f.longitude + 180) / 360 * POWER(2, #{zoom})) AS cluster_x,
+          FLOOR((1 - LN(TAN(RADIANS(LEAST(85, GREATEST(-85, f.latitude)))) +
+            1 / COS(RADIANS(LEAST(85, GREATEST(-85, f.latitude))))) / PI()) / 2 * POWER(2, #{zoom})) AS cluster_y,
+          COUNT(*) AS item_count, AVG(f.latitude) AS latitude, AVG(f.longitude) AS longitude,
+          MIN(f.latitude) AS min_latitude, MAX(f.latitude) AS max_latitude,
+          MIN(f.longitude) AS min_longitude, MAX(f.longitude) AS max_longitude,
+          CASE WHEN COUNT(*)=1 THEN MIN(f.id) END AS food_id,
+          CASE WHEN COUNT(*)=1 THEN MIN(f.name) END AS food_name
+        FROM food f LEFT JOIN region r ON r.id=f.region_id
+        <where><include refid="filteredConditions"/></where>
+        GROUP BY cluster_x, cluster_y
+        ORDER BY item_count DESC, cluster_x, cluster_y
+        LIMIT #{limit}
+    </select>
+
     <select id="findAdminPage" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
@@ -157,7 +298,7 @@
         SELECT <include refid="foodColumns"/>
         FROM food f
         LEFT JOIN region r ON r.id = f.region_id
-        WHERE f.created_by = #{username}
+        WHERE f.created_by_user_id = #{userId}
         ORDER BY f.created_at DESC, f.id DESC
     </select>
 
@@ -166,17 +307,26 @@
         FROM food f
         LEFT JOIN region r ON r.id = f.region_id
         WHERE f.review_status = 'APPROVED'
-          AND f.created_by = #{username}
+          AND f.created_by_user_id = #{userId}
         ORDER BY f.heat DESC, f.id DESC
         LIMIT #{limit}
     </select>
 
-    <select id="findApprovedForMatching" resultMap="foodResultMap">
+    <select id="findMatchingCandidates" resultMap="foodResultMap">
         SELECT <include refid="foodColumns"/>
         FROM food f
         LEFT JOIN region r ON r.id = f.region_id
         WHERE f.review_status = 'APPROVED'
-        ORDER BY f.id DESC
+        <if test="tokens != null and !tokens.isEmpty()">
+            AND <foreach collection="tokens" item="token" open="(" close=")" separator=" OR ">
+                INSTR(LOWER(f.name), LOWER(#{token})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.ingredients, '')), LOWER(#{token})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.city, '')), LOWER(#{token})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.province, '')), LOWER(#{token})) &gt; 0
+            </foreach>
+        </if>
+        ORDER BY f.heat DESC, f.id DESC
+        LIMIT #{limit}
     </select>
 
     <select id="findOwnedById" resultMap="foodResultMap">
@@ -184,7 +334,7 @@
         FROM food f
         LEFT JOIN region r ON r.id = f.region_id
         WHERE f.id = #{id}
-          AND f.created_by = #{username}
+          AND f.created_by_user_id = #{userId}
     </select>
 
     <update id="updateOwnedDetails">
@@ -200,10 +350,11 @@
             image_url = #{imageUrl},
             remark = #{remark},
             review_status = #{status},
+            content_version = content_version + 1,
             reviewed_by = #{reviewedBy},
             reviewed_at = CASE WHEN #{status} = 'APPROVED' THEN CURRENT_TIMESTAMP ELSE NULL END
         WHERE id = #{id}
-          AND created_by = #{username}
+          AND created_by_user_id = #{userId}
     </update>
 
     <select id="countAdmin" resultType="int">
@@ -246,12 +397,13 @@
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO food (
             name, region_id, latitude, longitude, address, summary, story,
-            ingredients, image_url, remark, heat, review_status, reviewed_by, reviewed_at, created_by, created_at
+            ingredients, image_url, remark, heat, review_status, reviewed_by, reviewed_at,
+            created_by, created_by_user_id, created_at
         )
         VALUES (
             #{name}, #{region.id}, #{latitude}, #{longitude}, #{address}, #{summary}, #{story},
             #{ingredients}, #{imageUrl}, #{remark}, #{heat}, #{reviewStatus}, #{reviewedBy}, #{reviewedAt},
-            #{createdBy}, #{createdAt}
+            #{createdBy}, #{createdByUserId}, #{createdAt}
         )
     </insert>
 
@@ -275,6 +427,7 @@
     <update id="touchDailyVisit">
         UPDATE food_daily_visit v
         INNER JOIN app_user u ON u.id = v.user_id
+        INNER JOIN food f ON f.id = v.food_id AND f.review_status = 'APPROVED'
         SET v.visited_at = CURRENT_TIMESTAMP
         WHERE v.food_id = #{foodId}
           AND u.username = #{username}
@@ -344,6 +497,7 @@
             reviewed_at = CURRENT_TIMESTAMP
         WHERE id = #{id}
           AND review_status = 'PENDING'
+          AND content_version = #{expectedVersion}
     </update>
 
     <delete id="deleteById">

@@ -7,6 +7,8 @@ import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.entity.vo.FoodFootprintVO;
 import com.dayan.food.entity.vo.FoodMarkerVO;
 import com.dayan.food.entity.vo.FoodPageVO;
+import com.dayan.food.entity.vo.FoodMapResultsVO;
+import com.dayan.food.entity.vo.FoodMapClustersVO;
 import com.dayan.food.entity.enums.FoodReviewStatus;
 
 import java.math.BigDecimal;
@@ -36,11 +38,23 @@ public interface FoodService {
 
     FoodCatalogVO catalog(String keyword, Long regionId, int page, int pageSize);
 
+    FoodCatalogVO filteredCatalog(String keyword, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, String sort,
+            BigDecimal minLatitude, BigDecimal maxLatitude, BigDecimal minLongitude,
+            BigDecimal maxLongitude, int page, int pageSize, boolean compact);
+
+    FoodMapResultsVO filteredMap(String keyword, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, String sort,
+            BigDecimal minLatitude, BigDecimal maxLatitude, BigDecimal minLongitude,
+            BigDecimal maxLongitude);
+
+    FoodMapClustersVO mapClusters(String keyword, Long regionId, List<Long> tasteIds,
+            List<Long> ingredientIds, List<Long> cuisineIds, BigDecimal minLatitude,
+            BigDecimal maxLatitude, BigDecimal minLongitude, BigDecimal maxLongitude, int zoom);
+
     FoodPageVO listForAdmin(int page, int pageSize, FoodReviewStatus status);
 
     List<FoodVO> listMine(String username);
-
-    List<FoodVO> matchingCatalog();
 
     List<FoodFootprintVO> listRecentVisits(String username, int limit);
 
@@ -58,7 +72,7 @@ public interface FoodService {
 
     void recordVisit(Long id, String username);
 
-    void review(Long id, FoodReviewStatus status, String reviewedBy);
+    void review(Long id, FoodReviewStatus status, long expectedVersion, String reviewedBy);
 
     FoodVO create(
             String name,

@@ -1,4 +1,6 @@
 export default {
+  tagPicker: { title: '菜品标签', hint: '每类最多选择 10 个；新标签审核后进入公共筛选', pending: '待审核', newPlaceholder: '创建新标签', create: '创建并选择', typeLimit: '每类标签最多选择 10 个', createFailed: '标签创建失败', loadFailed: '标签加载失败' },
+  theme: { label: '主题', system: '跟随系统', light: '浅色', dark: '深色' },
   share: {
     statsHttpError: '个人统计接口请求失败（HTTP {status}），尚未取得真实数量。',
     statsNetworkError: '个人统计请求超时或网络不可用，尚未取得真实数量。',
@@ -46,6 +48,8 @@ export default {
     "previewAlt": "生成的菜品分享卡"
 },
   common: {
+    routeLoadFailed: '页面资源加载失败，请检查网络后刷新。',
+    reload: '刷新页面',
     appName: '大炎珍馐志',
     tagline: '寻味九州 · 记录人间烟火',
     catalog: '珍馐图鉴',
@@ -109,7 +113,14 @@ export default {
     heroTitle: '山河有味，',
     heroEmphasis: '烟火成诗',
     heroDescription: '循着一方水土，寻访一道珍馐。收录食材、掌故与手艺，让每一种地域滋味都被看见。',
+    favoritesEyebrow: '我的珍藏', favoritesTitle: '已收藏的珍馐', favoritesCount: '共 {count} 道可访问收藏',
+    favoritesLogin: '登录后查看你的收藏。', favoritesLoading: '正在翻阅收藏……', favoritesEmpty: '还没有收藏，先从目录挑一道吧。',
+    favoritesError: '收藏加载失败，请重试。', loadMoreFavorites: '加载更多', viewAllFavorites: '查看全部收藏 →',
     searchPlaceholder: '搜索一道菜名……',
+    filters: '筛选', selectedFilters: '已选 {count} 项', sort: '排序', sortRelevance: '相关性', sortHeat: '热度优先', sortNewest: '最新收录',
+    tagTypeTASTE: '口味', tagTypeINGREDIENT: '食材', tagTypeCUISINE: '菜系', noApprovedTags: '暂无已审核标签',
+    onlyMapBounds: '仅查看当前地图范围', clearFilters: '清空筛选', applyFilters: '应用筛选', clearKeyword: '清空关键词',
+    mapTruncated: '地图仅展示部分结果，完整数量请查看目录。', emptyWithFilters: '没有符合当前条件的菜品。可移除条件或收录新菜品。',
     search: '寻味',
     regionEyebrow: '九州风土',
     regionTitle: '地域寻味',
@@ -179,6 +190,7 @@ export default {
     searchEmpty: '没有匹配的地区',
   },
   detail: {
+    checkinBadge: '打卡 · {date}', checkinWithoutNote: '打卡了这道菜',
     back: '← 返回珍馐图鉴',
     ingredientsEyebrow: '食之有物',
     ingredients: '主要食材',
@@ -208,6 +220,8 @@ export default {
     commentSubmitting: '正在发表……',
     commentRequired: '请输入评论内容。',
     commentSubmitError: '评论发表失败，请稍后重试。',
+    commentMode: '评论', checkinMode: '打卡', checkinAs: '以 {name} 的身份记录打卡',
+    checkinDate: '吃过日期', checkinVisibility: '可见性', checkinPublic: '公开', checkinPrivate: '仅自己可见', checkinSubmit: '保存打卡',
     commentsLoading: '正在读取食客留言……',
     commentLoadError: '评论加载失败，请稍后重试。',
     commentsEmpty: '尚无评论，来写下第一条味觉印象吧。',
@@ -244,6 +258,12 @@ export default {
     coordinateRequired: '请先在地图上点击选择坐标。',
     pendingSuccess: '菜品已提交，管理员审批通过后会显示在地图上。',
     saveError: '保存失败，请检查填写内容和后端服务。',
+    imageUploadError: '图片上传失败，请检查格式和大小后重试。',
+    imageTooLarge: '图片超过 5MB，请重新选择。',
+    imageInvalidType: '仅支持 JPG、PNG 或 WebP 图片。',
+    cancelUpload: '取消上传',
+    uploadingImage: '正在上传图片…',
+    savingFood: '正在保存菜品…',
     saving: '正在收录……',
     submit: '收入珍馐志',
   },
@@ -449,6 +469,7 @@ export default {
     backToLogin: '返回登录',
   },
   admin: {
+    tabTags: '标签治理', tagManagement: '菜品标签治理', tagLoadError: '标签列表加载失败', tagUpdateError: '标签操作失败，请刷新后重试', tagRejectReason: '请填写拒绝原因', tagRenamePrompt: '请输入标签的新名称', tagMergePrompt: '请输入要合并到的目标标签 ID', tagName: '标签名称', tagType: '分类', rename: '改名', merge: '合并', all: '全部', disabled: '已停用',
     eyebrow: 'ADMINISTRATION',
     title: '珍馐志管理后台',
     description: '管理九州风味档案与地区内容。',

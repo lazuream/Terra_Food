@@ -1,4 +1,6 @@
 export default {
+  tagPicker: { title: 'Dish tags', hint: 'Choose up to 10 per category. New tags become public after review.', pending: 'Pending', newPlaceholder: 'Create a tag', create: 'Create and select', typeLimit: 'Choose up to 10 tags per category', createFailed: 'Could not create tag', loadFailed: 'Could not load tags' },
+  theme: { label: 'Theme', system: 'System', light: 'Light', dark: 'Dark' },
   share: {
     statsHttpError: 'Profile statistics request failed (HTTP {status}); actual counts are unavailable.',
     statsNetworkError: 'The statistics request timed out or the network is unavailable.',
@@ -46,6 +48,8 @@ export default {
     "previewAlt": "Exported food share card"
 },
   common: {
+    routeLoadFailed: 'Page resources failed to load. Check your connection and refresh.',
+    reload: 'Reload',
     appName: 'Flavors of Dayan',
     tagline: 'Discover regional flavors and everyday stories',
     catalog: 'Food Atlas',
@@ -109,7 +113,14 @@ export default {
     heroTitle: 'Flavors across the land, ',
     heroEmphasis: 'stories at every table',
     heroDescription: 'Follow the landscape to discover local delicacies, ingredients, traditions, and the people who keep them alive.',
+    favoritesEyebrow: 'MY COLLECTION', favoritesTitle: 'Favorite Delicacies', favoritesCount: '{count} accessible favorites',
+    favoritesLogin: 'Sign in to see your favorites.', favoritesLoading: 'Loading favorites…', favoritesEmpty: 'No favorites yet. Pick one from the catalog.',
+    favoritesError: 'Favorites could not be loaded.', loadMoreFavorites: 'Load more', viewAllFavorites: 'View all favorites →',
     searchPlaceholder: 'Search for a dish…',
+    filters: 'Filters', selectedFilters: '{count} selected', sort: 'Sort', sortRelevance: 'Relevance', sortHeat: 'Popular', sortNewest: 'Newest',
+    tagTypeTASTE: 'Taste', tagTypeINGREDIENT: 'Ingredients', tagTypeCUISINE: 'Cuisine', noApprovedTags: 'No approved tags',
+    onlyMapBounds: 'Only this map area', clearFilters: 'Clear filters', applyFilters: 'Apply', clearKeyword: 'Clear search',
+    mapTruncated: 'The map shows part of the results. See the catalog for the full count.', emptyWithFilters: 'No dishes match these conditions. Remove a filter or add a new dish.',
     search: 'Explore',
     regionEyebrow: 'REGIONAL FLAVORS',
     regionTitle: 'Explore by Region',
@@ -179,6 +190,7 @@ export default {
     searchEmpty: 'No matching region',
   },
   detail: {
+    checkinBadge: 'Check-in · {date}', checkinWithoutNote: 'Checked in to this dish',
     back: '← Back to the Food Atlas',
     ingredientsEyebrow: 'WHAT IS INSIDE',
     ingredients: 'Key Ingredients',
@@ -208,6 +220,8 @@ export default {
     commentSubmitting: 'Posting…',
     commentRequired: 'Please enter a comment.',
     commentSubmitError: 'Unable to post the comment. Please try again.',
+    commentMode: 'Comment', checkinMode: 'Check in', checkinAs: 'Record a check-in as {name}',
+    checkinDate: 'Eaten on', checkinVisibility: 'Visibility', checkinPublic: 'Public', checkinPrivate: 'Private', checkinSubmit: 'Save check-in',
     commentsLoading: 'Loading comments…',
     commentLoadError: 'Unable to load comments. Please try again.',
     commentsEmpty: 'No comments yet. Be the first to share an impression.',
@@ -244,6 +258,12 @@ export default {
     coordinateRequired: 'Pick a location on the map first.',
     pendingSuccess: 'Your dish was submitted and will appear on the map after administrator approval.',
     saveError: 'Unable to save. Please check the form and backend service.',
+    imageUploadError: 'Image upload failed. Check the format and size, then try again.',
+    imageTooLarge: 'The image is larger than 5 MB. Choose another file.',
+    imageInvalidType: 'Only JPG, PNG, and WebP images are supported.',
+    cancelUpload: 'Cancel upload',
+    uploadingImage: 'Uploading image…',
+    savingFood: 'Saving food…',
     saving: 'Saving…',
     submit: 'Add to the Collection',
   },
@@ -449,6 +469,7 @@ export default {
     backToLogin: 'Back to sign in',
   },
   admin: {
+    tabTags: 'Tags', tagManagement: 'Dish tag governance', tagLoadError: 'Could not load tags', tagUpdateError: 'Could not update the tag. Refresh and try again.', tagRejectReason: 'Enter a rejection reason', tagRenamePrompt: 'Enter the new tag name', tagMergePrompt: 'Enter the target tag ID', tagName: 'Tag', tagType: 'Category', rename: 'Rename', merge: 'Merge', all: 'All', disabled: 'Disabled',
     eyebrow: 'ADMINISTRATION',
     title: 'Food Atlas Dashboard',
     description: 'Manage regional food records and locations.',

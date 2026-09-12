@@ -50,7 +50,7 @@ public class AdminController {
             @RequestBody @Valid FoodReviewDTO request,
             Authentication authentication
     ) {
-        foodService.review(id, request.status(), authentication.getName());
+        foodService.review(id, request.status(), request.expectedVersion(), authentication.getName());
     }
 
     @GetMapping("/users")
@@ -94,7 +94,7 @@ public class AdminController {
             @RequestBody @Valid ReviewItemDTO request,
             Authentication authentication
     ) {
-        appUserService.reviewItem(id, request.field(), request.status(), authentication.getName());
+        appUserService.reviewItem(id, request.field(), request.status(), request.expectedVersion(), authentication.getName());
     }
 
     @DeleteMapping("/users/{id}")

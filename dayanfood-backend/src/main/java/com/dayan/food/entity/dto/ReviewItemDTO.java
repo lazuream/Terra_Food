@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 
 public record ReviewItemDTO(
         @NotNull ReviewField field,
-        @NotNull ReviewStatus status
+        @NotNull ReviewStatus status,
+        @NotNull Long expectedVersion
 ) {
 }

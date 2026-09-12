@@ -2,6 +2,7 @@ package com.dayan.food.controller;
 
 import com.dayan.food.entity.vo.ImageUploadVO;
 import com.dayan.food.service.ImageStorageService;
+import com.dayan.food.mapper.ImageAssetMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,14 +16,18 @@ import org.springframework.web.multipart.MultipartFile;
 public class ImageController {
 
     private final ImageStorageService imageStorageService;
+    private final ImageAssetMapper imageAssetMapper;
 
-    public ImageController(ImageStorageService imageStorageService) {
+    public ImageController(ImageStorageService imageStorageService, ImageAssetMapper imageAssetMapper) {
         this.imageStorageService = imageStorageService;
+        this.imageAssetMapper = imageAssetMapper;
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ImageUploadVO upload(@RequestParam("file") MultipartFile file) {
-        return new ImageUploadVO(imageStorageService.store(file));
+        String url = imageStorageService.store(file);
+        var asset = imageAssetMapper.findByOriginalUrl(url);
+        return new ImageUploadVO(url, asset.getId(), asset.getOriginalWidth(), asset.getOriginalHeight(), asset.getStatus());
     }
 }

@@ -30,6 +30,9 @@ public class Food {
     private String ingredients;
 
     private String imageUrl;
+    private String imageSmallUrl;
+    private String imageMediumUrl;
+    private String imageLargeUrl;
 
     private String remark;
 
@@ -37,11 +40,15 @@ public class Food {
 
     private FoodReviewStatus reviewStatus;
 
+    private Long contentVersion;
+
     private String reviewedBy;
 
     private LocalDateTime reviewedAt;
 
     private String createdBy;
+
+    private Long createdByUserId;
 
     private LocalDateTime createdAt;
 
@@ -58,6 +65,15 @@ public class Food {
             String remark,
             String createdBy,
             FoodReviewStatus reviewStatus
+    ) {
+        this(name, region, latitude, longitude, address, summary, story, ingredients, imageUrl,
+                remark, createdBy, null, reviewStatus);
+    }
+
+    public Food(
+            String name, Region region, BigDecimal latitude, BigDecimal longitude, String address,
+            String summary, String story, String ingredients, String imageUrl, String remark,
+            String createdBy, Long createdByUserId, FoodReviewStatus reviewStatus
     ) {
         this.name = name;
         this.region = region;
@@ -76,6 +92,7 @@ public class Food {
             this.reviewedAt = LocalDateTime.now();
         }
         this.createdBy = createdBy;
+        this.createdByUserId = createdByUserId;
         this.createdAt = LocalDateTime.now();
     }
 }

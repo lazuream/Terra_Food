@@ -25,7 +25,7 @@
         </div>
       </div>
     </div>
-    <audio ref="bgMusic" :src="currentMusic.src" @timeupdate="updateProgress" @loadedmetadata="updateDuration" @play="isMusicPlaying = true" @pause="isMusicPlaying = false" @ended="handleNext" />
+    <audio ref="bgMusic" :src="currentMusic.src" preload="none" @timeupdate="updateProgress" @loadedmetadata="updateDuration" @play="isMusicPlaying = true" @pause="isMusicPlaying = false" @ended="handleNext" />
   </div>
 </template>
 

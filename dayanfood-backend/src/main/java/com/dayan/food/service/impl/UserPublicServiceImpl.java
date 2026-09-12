@@ -45,7 +45,7 @@ public class UserPublicServiceImpl implements UserPublicService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在");
         }
 
-        List<FoodVO> foods = foodMapper.findApprovedByCreatedBy(user.getUsername(), MAX_PUBLIC_FOODS).stream()
+        List<FoodVO> foods = foodMapper.findApprovedByCreatedBy(user.getId(), MAX_PUBLIC_FOODS).stream()
                 .map(food -> FoodVO.from(food, user))
                 .toList();
 

@@ -2,7 +2,11 @@ package com.dayan.food.service.impl;
 
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.service.ImageStorageService;
+import com.dayan.food.service.UploadTooLargeException;
 import com.dayan.food.mapper.FoodMapper;
+import com.dayan.food.mapper.ImageAssetMapper;
+import com.dayan.food.entity.po.ImageAsset;
+import com.dayan.food.image.ImageDimensions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -10,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
@@ -26,19 +31,22 @@ public class ImageStorageServiceImpl implements ImageStorageService {
     private final Duration orphanRetention;
     private final FoodMapper foodMapper;
     private final AppUserMapper appUserMapper;
+    private final ImageAssetMapper imageAssetMapper;
 
     public ImageStorageServiceImpl(
             @Value("${app.upload-directory:uploads}") String uploadDirectory,
             @Value("${app.upload.max-image-bytes:5242880}") long maxImageBytes,
             @Value("${app.upload.orphan-retention:24h}") Duration orphanRetention,
             FoodMapper foodMapper,
-            AppUserMapper appUserMapper
+            AppUserMapper appUserMapper,
+            ImageAssetMapper imageAssetMapper
     ) {
         this.uploadDirectory = Path.of(uploadDirectory).toAbsolutePath().normalize();
         this.maxImageBytes = maxImageBytes;
         this.orphanRetention = orphanRetention;
         this.foodMapper = foodMapper;
         this.appUserMapper = appUserMapper;
+        this.imageAssetMapper = imageAssetMapper;
     }
 
     @Override
@@ -62,6 +70,11 @@ public class ImageStorageServiceImpl implements ImageStorageService {
                 boolean referenced = foodMapper.countByImageUrl(imageUrl) > 0
                         || appUserMapper.countByAvatarUrl(imageUrl) > 0;
                 if (!referenced && Files.deleteIfExists(path)) {
+                    ImageAsset asset = imageAssetMapper.findByOriginalUrl(imageUrl);
+                    deleteVariant(asset == null ? null : asset.getVariant320Url());
+                    deleteVariant(asset == null ? null : asset.getVariant640Url());
+                    deleteVariant(asset == null ? null : asset.getVariant1280Url());
+                    imageAssetMapper.deleteByOriginalUrl(imageUrl);
                     deleted++;
                 }
             }
@@ -77,7 +90,7 @@ public class ImageStorageServiceImpl implements ImageStorageService {
             throw new IllegalArgumentException("上传图片不能为空");
         }
         if (file.getSize() > maxImageBytes) {
-            throw new IllegalArgumentException("上传图片不能超过 5MB");
+            throw new UploadTooLargeException("上传图片不能超过 5MB");
         }
 
         String extension = getExtension(file.getOriginalFilename());
@@ -92,6 +105,7 @@ public class ImageStorageServiceImpl implements ImageStorageService {
             if (!detectedExtension.equals(normalizedExtension)) {
                 throw new IllegalArgumentException("图片内容与文件扩展名不一致");
             }
+            ImageDimensions dimensions = ImageDimensions.read(content);
 
             Files.createDirectories(uploadDirectory);
             String storedName = UUID.randomUUID() + "." + detectedExtension;
@@ -100,11 +114,25 @@ public class ImageStorageServiceImpl implements ImageStorageService {
                 throw new IllegalArgumentException("无效的文件名");
             }
 
-            Files.write(target, content);
-            return "/uploads/" + storedName;
+            Path temporary = Files.createTempFile(uploadDirectory, ".upload-", ".tmp");
+            Files.write(temporary, content);
+            Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
+            String url = "/uploads/" + storedName;
+            ImageAsset asset = new ImageAsset(url, dimensions.width(), dimensions.height());
+            imageAssetMapper.insert(asset);
+            if (dimensions.pixels() > 24_000_000L) {
+                imageAssetMapper.markFailed(asset.getId(), "PIXEL_LIMIT");
+            }
+            return url;
         } catch (IOException exception) {
             throw new IllegalStateException("图片保存失败", exception);
         }
+    }
+
+    private void deleteVariant(String url) throws IOException {
+        if (url == null || !url.startsWith("/uploads/")) return;
+        Path target = uploadDirectory.resolve(url.substring("/uploads/".length())).normalize();
+        if (target.startsWith(uploadDirectory)) Files.deleteIfExists(target);
     }
 
     private String getExtension(String filename) {
