@@ -13,6 +13,11 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
 import org.slf4j.Logger;
@@ -68,6 +73,25 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
     public ApiErrorVO handleMailDelivery(RegistrationCodeDeliveryException exception, HttpServletRequest request) {
         return error("MAIL_UNAVAILABLE", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler({HttpMessageNotReadableException.class, MissingServletRequestParameterException.class,
+            MethodArgumentTypeMismatchException.class})
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiErrorVO handleMalformedRequest(Exception exception, HttpServletRequest request) {
+        return error("MALFORMED_REQUEST", "请求格式或参数类型无效", request);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
+    public ApiErrorVO handleMethodNotAllowed(HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {
+        return error("METHOD_NOT_ALLOWED", "请求方法不受支持", request);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    @ResponseStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+    public ApiErrorVO handleUnsupportedMedia(HttpMediaTypeNotSupportedException exception, HttpServletRequest request) {
+        return error("UNSUPPORTED_MEDIA_TYPE", "请求内容类型不受支持", request);
     }
 
     @ExceptionHandler(ResponseStatusException.class)

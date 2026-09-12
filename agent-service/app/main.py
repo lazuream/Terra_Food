@@ -74,7 +74,7 @@ async def get_memory_store() -> Milvus | None:
             try:
                 embeddings = FastEmbedEmbeddings(
                     model_name=settings.embedding_model,
-                    cache_dir="/root/.cache/fastembed",
+                    cache_dir="/home/terra/.cache/fastembed",
                 )
                 _memory_store = Milvus(
                     embedding_function=embeddings,

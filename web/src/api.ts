@@ -115,10 +115,10 @@ export async function getFoodMapClusters(params: FoodQuery & { zoom: number }, s
   return response.data
 }
 
-export async function getFoodMapClusterMembers(cluster: FoodMapClusterItem, params: FoodQuery): Promise<PagedCatalog> {
+export async function getFoodMapClusterMembers(cluster: FoodMapClusterItem, params: FoodQuery, page = 1, signal?: AbortSignal): Promise<PagedCatalog> {
   const response = await api.get<PagedCatalog>(`/foods/map-clusters/${cluster.id}/members`, {
     params: { ...params, minLatitude: cluster.minLatitude, maxLatitude: cluster.maxLatitude,
-      minLongitude: cluster.minLongitude, maxLongitude: cluster.maxLongitude, page: 1, pageSize: 20 },
+      minLongitude: cluster.minLongitude, maxLongitude: cluster.maxLongitude, page, pageSize: 20 }, signal,
   })
   return response.data
 }

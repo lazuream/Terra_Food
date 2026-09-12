@@ -14,7 +14,6 @@ import org.springframework.dao.DuplicateKeyException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -65,15 +64,14 @@ class RegionServiceImplTests {
     void resolveLocationReusesConcurrentInsert() {
         Region concurrent = new Region("宁波", "浙江", "浙江 · 宁波地方美食");
         when(cityCenterService.normalizeProvince("浙江省")).thenReturn("浙江");
-        when(regionMapper.findByNameAndProvince("宁波", "浙江"))
-                .thenReturn(null)
-                .thenReturn(concurrent);
+        when(regionMapper.findByNameAndProvince("宁波", "浙江")).thenReturn(null);
+        when(regionMapper.findByNameAndProvinceForUpdate("宁波", "浙江")).thenReturn(concurrent);
         when(regionMapper.insert(any(Region.class)))
                 .thenThrow(new DuplicateKeyException("duplicate"));
 
         var result = service.resolveLocation("浙江省", "宁波市");
 
         assertEquals("宁波", result.name());
-        verify(regionMapper, times(2)).findByNameAndProvince("宁波", "浙江");
+        verify(regionMapper).findByNameAndProvinceForUpdate("宁波", "浙江");
     }
 }

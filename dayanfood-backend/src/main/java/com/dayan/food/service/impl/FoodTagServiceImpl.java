@@ -21,6 +21,7 @@ import com.dayan.food.cache.CacheInvalidator;
  public List<FoodTagVO> list(String type,String keyword){return mapper.findApproved(type==null?null:type.toUpperCase(),keyword==null?null:keyword.trim());}
  @Transactional public FoodTagVO create(FoodTagCreateDTO request,String username){
   String type=type(request.type()); var user=requireUser(username); String name=name(request.name()); String normalized=normalize(name);
+  users.findByUsernameForUpdate(username);
   if(mapper.countCreatedToday(user.getId())>=20) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"今天创建的待审核标签已达上限");
   try{mapper.insert(type,name,normalized,user.getId());}catch(DuplicateKeyException e){throw new ResponseStatusException(HttpStatus.CONFLICT,"标签已存在");}
   FoodTagVO created=mapper.findByName(type,normalized); mapper.insertAudit(created.id(),user.getId(),"CREATE","用户创建待审核标签"); return created;

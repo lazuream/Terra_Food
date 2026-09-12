@@ -99,8 +99,17 @@ function createClusterPopup(item: FoodMapClusterItem) {
   const status = document.createElement('span')
   status.textContent = t('home.loading')
   const list = document.createElement('ul')
+  const more = document.createElement('button')
+  more.type = 'button'
+  more.textContent = t('home.loadMoreFavorites')
+  more.hidden = true
   popup.append(title, status, list)
-  void getFoodMapClusterMembers(item, props.filters).then((page) => {
+  popup.append(more)
+  let currentPage = 0
+  const load = async () => {
+    more.disabled = true
+    const page = await getFoodMapClusterMembers(item, props.filters, currentPage + 1)
+    currentPage = page.page
     status.remove()
     page.items.forEach((food) => {
       const row = document.createElement('li')
@@ -110,7 +119,11 @@ function createClusterPopup(item: FoodMapClusterItem) {
       row.append(link)
       list.append(row)
     })
-  }).catch(() => { status.textContent = t('home.loadError') })
+    more.hidden = list.children.length >= page.total
+    more.disabled = false
+  }
+  more.addEventListener('click', () => { void load().catch(() => { more.disabled = false }) })
+  void load().catch(() => { status.textContent = t('home.loadError'); more.hidden = true })
   return popup
 }
 
@@ -127,7 +140,9 @@ function renderMarkers() {
     }
   })
   props.items.forEach((item) => {
-    const signature = `${item.kind}:${item.count}:${item.foodId || ''}:${locale.value}`
+    const signature = [item.kind, item.count, item.foodId || '', item.name || '', item.latitude,
+      item.longitude, item.minLatitude, item.maxLatitude, item.minLongitude, item.maxLongitude,
+      locale.value].join(':')
     const existing = renderedMarkers.get(item.id)
     if (existing && existing.signature === signature) {
       existing.marker.setLatLng([item.latitude, item.longitude])

@@ -11,6 +11,7 @@ public interface RegionMapper {
     Region findById(Long id);
 
     Region findByNameAndProvince(String name, String province);
+    Region findByNameAndProvinceForUpdate(String name, String province);
 
     int insert(Region region);
 }

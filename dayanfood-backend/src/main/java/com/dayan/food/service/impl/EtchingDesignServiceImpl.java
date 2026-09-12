@@ -49,6 +49,7 @@ public class EtchingDesignServiceImpl implements EtchingDesignService {
     public EtchingDesignVO create(String username, EtchingDesignDTO request) {
         var user = appUserMapper.findByUsername(username);
         if (user == null || !user.isActive()) throw new IllegalArgumentException("当前用户不存在或已停用");
+        appUserMapper.findByUsernameForUpdate(username);
         if (etchingDesignMapper.countByUsername(username) >= MAX_DESIGNS) {
             throw new IllegalArgumentException("每位用户最多保存12枚自制蚀刻章");
         }

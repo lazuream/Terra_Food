@@ -56,7 +56,7 @@ public class RegionServiceImpl implements RegionService {
                 regionMapper.insert(region);
             } catch (DuplicateKeyException exception) {
                 // 两个登录用户同时首次收录同一城市时，复用另一事务刚创建的记录。
-                region = regionMapper.findByNameAndProvince(normalizedCity, normalizedProvince);
+                region = regionMapper.findByNameAndProvinceForUpdate(normalizedCity, normalizedProvince);
                 if (region == null) throw exception;
             }
         }

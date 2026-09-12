@@ -555,6 +555,14 @@ function imageSrcSet(food: Food) {
   return [variants?.small && `${variants.small} 320w`, variants?.medium && `${variants.medium} 640w`, variants?.large && `${variants.large} 1280w`]
     .filter(Boolean).join(', ') || undefined
 }
+
+function fallbackToOriginal(event: Event, original?: string) {
+  const image = event.currentTarget as HTMLImageElement
+  if (!original || image.dataset.originalFallback === 'done' || image.currentSrc === original) return
+  image.dataset.originalFallback = 'done'
+  image.removeAttribute('srcset')
+  image.src = original
+}
 </script>
 
 <template>
@@ -728,7 +736,7 @@ function imageSrcSet(food: Food) {
             @click="focusFood(food)"
           ></button>
           <div class="explorer-card-photo" :class="{ 'no-cover': !food.imageUrl }">
-            <img v-if="food.imageUrl" :src="food.imageVariants?.medium || food.imageUrl" :srcset="imageSrcSet(food)" sizes="(max-width: 700px) 45vw, 260px" :alt="food.name" :loading="index < 2 ? 'eager' : 'lazy'" :fetchpriority="index < 2 ? 'high' : 'auto'" decoding="async">
+            <img v-if="food.imageUrl" :src="food.imageVariants?.medium || food.imageUrl" :srcset="imageSrcSet(food)" sizes="(max-width: 700px) 45vw, 260px" :alt="food.name" :loading="index < 2 ? 'eager' : 'lazy'" :fetchpriority="index < 2 ? 'high' : 'auto'" decoding="async" @error="fallbackToOriginal($event, food.imageUrl)">
             <span>{{ food.region.province }} · {{ food.region.name }}</span>
           </div>
           <div class="explorer-card-body">
