@@ -45,6 +45,7 @@ export interface Food {
   remark?: string
   heat: number
   reviewStatus: FoodReviewStatus
+  contentVersion: number
   reviewedBy?: string
   reviewedAt?: string
   createdBy: string
@@ -248,6 +249,7 @@ export interface WishlistStatus {
 
 export interface FoodReviewPayload {
   status: Extract<FoodReviewStatus, 'APPROVED' | 'REJECTED'>
+  expectedVersion: number
 }
 
 export interface FoodCreatePayload {
@@ -301,12 +303,14 @@ export interface PendingReview {
   field: ReviewField
   currentValue: string
   pendingValue: string
+  version: number
   requestedAt: string
 }
 
 export interface ReviewItemPayload {
   field: ReviewField
   status: Extract<ReviewItemStatus, 'APPROVED' | 'REJECTED'>
+  expectedVersion: number
 }
 
 export type SignatureStatus = 'PENDING' | 'APPROVED' | 'REJECTED'

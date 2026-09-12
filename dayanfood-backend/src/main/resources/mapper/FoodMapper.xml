@@ -20,9 +20,11 @@
         <result property="remark" column="remark"/>
         <result property="heat" column="heat"/>
         <result property="reviewStatus" column="review_status" javaType="com.dayan.food.entity.enums.FoodReviewStatus"/>
+        <result property="contentVersion" column="content_version"/>
         <result property="reviewedBy" column="reviewed_by"/>
         <result property="reviewedAt" column="reviewed_at"/>
         <result property="createdBy" column="created_by"/>
+        <result property="createdByUserId" column="created_by_user_id"/>
         <result property="createdAt" column="created_at"/>
         <association property="region" javaType="com.dayan.food.entity.po.Region">
             <id property="id" column="region_id"/>
@@ -66,9 +68,11 @@
         f.remark,
         f.heat,
         f.review_status,
+        f.content_version,
         f.reviewed_by,
         f.reviewed_at,
         f.created_by,
+        f.created_by_user_id,
         f.created_at,
         r.id AS region_id,
         COALESCE(NULLIF(f.city, ''), r.name) AS region_name,
@@ -294,7 +298,7 @@
         SELECT <include refid="foodColumns"/>
         FROM food f
         LEFT JOIN region r ON r.id = f.region_id
-        WHERE f.created_by = #{username}
+        WHERE f.created_by_user_id = #{userId}
         ORDER BY f.created_at DESC, f.id DESC
     </select>
 
@@ -303,7 +307,7 @@
         FROM food f
         LEFT JOIN region r ON r.id = f.region_id
         WHERE f.review_status = 'APPROVED'
-          AND f.created_by = #{username}
+          AND f.created_by_user_id = #{userId}
         ORDER BY f.heat DESC, f.id DESC
         LIMIT #{limit}
     </select>
@@ -330,7 +334,7 @@
         FROM food f
         LEFT JOIN region r ON r.id = f.region_id
         WHERE f.id = #{id}
-          AND f.created_by = #{username}
+          AND f.created_by_user_id = #{userId}
     </select>
 
     <update id="updateOwnedDetails">
@@ -346,10 +350,11 @@
             image_url = #{imageUrl},
             remark = #{remark},
             review_status = #{status},
+            content_version = content_version + 1,
             reviewed_by = #{reviewedBy},
             reviewed_at = CASE WHEN #{status} = 'APPROVED' THEN CURRENT_TIMESTAMP ELSE NULL END
         WHERE id = #{id}
-          AND created_by = #{username}
+          AND created_by_user_id = #{userId}
     </update>
 
     <select id="countAdmin" resultType="int">
@@ -392,12 +397,13 @@
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO food (
             name, region_id, latitude, longitude, address, summary, story,
-            ingredients, image_url, remark, heat, review_status, reviewed_by, reviewed_at, created_by, created_at
+            ingredients, image_url, remark, heat, review_status, reviewed_by, reviewed_at,
+            created_by, created_by_user_id, created_at
         )
         VALUES (
             #{name}, #{region.id}, #{latitude}, #{longitude}, #{address}, #{summary}, #{story},
             #{ingredients}, #{imageUrl}, #{remark}, #{heat}, #{reviewStatus}, #{reviewedBy}, #{reviewedAt},
-            #{createdBy}, #{createdAt}
+            #{createdBy}, #{createdByUserId}, #{createdAt}
         )
     </insert>
 
@@ -421,6 +427,7 @@
     <update id="touchDailyVisit">
         UPDATE food_daily_visit v
         INNER JOIN app_user u ON u.id = v.user_id
+        INNER JOIN food f ON f.id = v.food_id AND f.review_status = 'APPROVED'
         SET v.visited_at = CURRENT_TIMESTAMP
         WHERE v.food_id = #{foodId}
           AND u.username = #{username}
@@ -490,6 +497,7 @@
             reviewed_at = CURRENT_TIMESTAMP
         WHERE id = #{id}
           AND review_status = 'PENDING'
+          AND content_version = #{expectedVersion}
     </update>
 
     <delete id="deleteById">

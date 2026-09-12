@@ -1,0 +1,2 @@
+ALTER TABLE food ADD COLUMN content_version BIGINT NOT NULL DEFAULT 0 AFTER review_status;
+ALTER TABLE user_review_item ADD COLUMN version BIGINT NOT NULL DEFAULT 0 AFTER status;

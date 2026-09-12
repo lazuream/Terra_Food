@@ -13,6 +13,8 @@ public class AppUser {
 
     private Long id;
 
+    private String subjectId;
+
     private String username;
 
     private String password;
@@ -32,6 +34,8 @@ public class AppUser {
     private UserRole role;
 
     private boolean active;
+
+    private long authVersion;
 
     private LocalDateTime lastFoodUploadAt;
 

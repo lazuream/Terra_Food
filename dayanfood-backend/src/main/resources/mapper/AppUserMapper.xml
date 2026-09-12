@@ -6,6 +6,7 @@
 
     <resultMap id="appUserResultMap" type="com.dayan.food.entity.po.AppUser">
         <id property="id" column="id"/>
+        <result property="subjectId" column="subject_id"/>
         <result property="username" column="username"/>
         <result property="password" column="password"/>
         <result property="displayName" column="display_name"/>
@@ -16,13 +17,14 @@
         <result property="signatureStatus" column="signature_status" javaType="com.dayan.food.entity.enums.SignatureStatus"/>
         <result property="role" column="role" javaType="com.dayan.food.entity.enums.UserRole"/>
         <result property="active" column="active"/>
+        <result property="authVersion" column="auth_version"/>
         <result property="lastFoodUploadAt" column="last_food_upload_at"/>
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
     <sql id="userColumns">
-        id, username, password, display_name, email, avatar_url, signature, signature_pending,
-        signature_status, role, active, last_food_upload_at, created_at
+        id, subject_id, username, password, display_name, email, avatar_url, signature, signature_pending,
+        signature_status, role, active, auth_version, last_food_upload_at, created_at
     </sql>
 
     <select id="findByUsername" resultMap="appUserResultMap">
@@ -76,7 +78,7 @@
 
     <!-- 公开页读侧：userColumns 之外的敏感列（如 password）不进入查询与内存。 -->
     <select id="findPublicById" resultMap="appUserResultMap">
-        SELECT id, username, display_name, avatar_url, signature, active
+        SELECT id, subject_id, username, display_name, avatar_url, signature, active, auth_version
         FROM app_user
         WHERE id = #{id}
     </select>
@@ -120,19 +122,19 @@
 
     <update id="updateActive">
         UPDATE app_user
-        SET active = #{active}
+        SET active = #{active}, auth_version = auth_version + 1
         WHERE id = #{id}
     </update>
 
     <update id="updateRole">
         UPDATE app_user
-        SET role = #{role}
+        SET role = #{role}, auth_version = auth_version + 1
         WHERE id = #{id}
     </update>
 
     <update id="updatePassword">
         UPDATE app_user
-        SET password = #{password}
+        SET password = #{password}, auth_version = auth_version + 1
         WHERE username = #{username}
           AND LOWER(email) = #{email}
           AND active = TRUE
@@ -141,13 +143,18 @@
         DELETE FROM app_user
         WHERE id = #{id}
     </delete>
+    <insert id="enqueueExternalDeletion">
+        INSERT INTO external_identity_deletion(subject_id, target)
+        VALUES(#{subjectId}, #{target})
+        ON DUPLICATE KEY UPDATE status='PENDING', next_attempt_at=CURRENT_TIMESTAMP
+    </insert>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         INSERT INTO app_user (
-            username, password, display_name, email, role, active, last_food_upload_at, created_at
+            subject_id, username, password, display_name, email, role, active, auth_version, last_food_upload_at, created_at
         )
         VALUES (
-            #{username}, #{password}, #{displayName}, #{email}, #{role}, #{active},
+            UUID(), #{username}, #{password}, #{displayName}, #{email}, #{role}, #{active}, 1,
             #{lastFoodUploadAt}, #{createdAt}
         )
     </insert>

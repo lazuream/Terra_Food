@@ -17,6 +17,7 @@ def load_persona() -> str:
 @dataclass(frozen=True)
 class Settings:
     internal_token: str = os.getenv("AGENT_INTERNAL_TOKEN", "")
+    mcp_internal_token: str = os.getenv("MCP_INTERNAL_TOKEN", "")
     backend_url: str = os.getenv("BACKEND_INTERNAL_URL", "http://localhost:8080")
     mcp_url: str = os.getenv("MCP_SERVER_URL", "http://localhost:8091/mcp")
     model: str = os.getenv("AGENT_MODEL", "deepseek-v4-flash")

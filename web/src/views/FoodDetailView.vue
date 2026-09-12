@@ -44,6 +44,10 @@ function localDateInputValue(date = new Date()) {
 }
 const checkinDate = ref(localDateInputValue())
 const checkinVisibility = ref<'PUBLIC' | 'PRIVATE'>('PUBLIC')
+const checkinIdempotencyKey = ref(crypto.randomUUID())
+watch([checkinDate, checkinVisibility, commentContent], () => {
+  if (checkinMode.value && !submittingComment.value) checkinIdempotencyKey.value = crypto.randomUUID()
+})
 const error = ref('')
 const commentError = ref('')
 const commentsLoading = ref(false)
@@ -127,10 +131,11 @@ async function submitCheckin() {
   try {
     const expectedFoodId = Number(route.params.id)
     const expectedUserId = currentUser.value.id
-    await createFoodCheckin(expectedFoodId, { eatenOn: checkinDate.value, note: commentContent.value.trim() || undefined, visibility: checkinVisibility.value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' })
+    await createFoodCheckin(expectedFoodId, { eatenOn: checkinDate.value, note: commentContent.value.trim() || undefined, visibility: checkinVisibility.value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' }, checkinIdempotencyKey.value)
     if (Number(route.params.id) !== expectedFoodId || currentUser.value?.id !== expectedUserId) return
     commentContent.value = ''
     checkinMode.value = false
+    checkinIdempotencyKey.value = crypto.randomUUID()
     await loadComments(Number(route.params.id))
   } catch (requestError) {
     commentError.value = apiErrorMessage(requestError, '打卡保存失败，请稍后重试。')

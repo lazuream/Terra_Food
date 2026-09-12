@@ -11,6 +11,7 @@
         <result property="currentValue" column="current_value"/>
         <result property="pendingValue" column="pending_value"/>
         <result property="status" column="status" javaType="com.dayan.food.entity.enums.ReviewStatus"/>
+        <result property="version" column="version"/>
         <result property="requestedAt" column="requested_at"/>
         <result property="reviewedBy" column="reviewed_by"/>
         <result property="reviewedAt" column="reviewed_at"/>
@@ -24,6 +25,7 @@
             current_value = VALUES(current_value),
             pending_value = VALUES(pending_value),
             status = 'PENDING',
+            version = version + 1,
             requested_at = CURRENT_TIMESTAMP,
             reviewed_by = NULL,
             reviewed_at = NULL
@@ -52,7 +54,7 @@
 
     <select id="findPendingById" resultMap="reviewItemResultMap">
         SELECT * FROM user_review_item
-        WHERE id = #{id} AND status = 'PENDING'
+        WHERE id = #{id} AND status = 'PENDING' AND version = #{expectedVersion}
     </select>
 
     <update id="approveItem">
@@ -60,7 +62,7 @@
         SET status = 'APPROVED',
             reviewed_by = #{reviewedBy},
             reviewed_at = CURRENT_TIMESTAMP
-        WHERE id = #{id} AND status = 'PENDING'
+        WHERE id = #{id} AND status = 'PENDING' AND version = #{expectedVersion}
     </update>
 
     <update id="rejectItem">

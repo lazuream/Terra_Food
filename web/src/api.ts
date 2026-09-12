@@ -57,11 +57,27 @@ const api = axios.create({
 
 // 由 main.ts 注册的会话失效回调：统一清空登录态并跳转登录页，
 // 保持 api.ts 与 auth/router 解耦，避免循环依赖。
-let onUnauthorized: (() => void) | undefined
+type RevisionedRequest = { __sessionRevision?: number }
+let onUnauthorized: ((requestRevision?: number) => void) | undefined
+let readSessionRevision: () => number = () => 0
 
-export function registerUnauthorizedHandler(handler: () => void): void {
+export function registerUnauthorizedHandler(handler: (requestRevision?: number) => void): void {
   onUnauthorized = handler
 }
+
+export function registerSessionRevisionProvider(provider: () => number): void {
+  readSessionRevision = provider
+}
+
+api.interceptors.request.use((config) => {
+  ;(config as typeof config & RevisionedRequest).__sessionRevision = readSessionRevision()
+  const method = (config.method || 'get').toLowerCase()
+  if (!['post', 'put', 'patch', 'delete'].includes(method)) return config
+  return api.get<{ token: string; headerName: string }>('/auth/csrf').then(({ data }) => {
+    config.headers.set(data.headerName, data.token)
+    return config
+  })
+})
 
 api.interceptors.response.use(
   (response) => response,
@@ -71,7 +87,7 @@ api.interceptors.response.use(
       // /auth/me 的 401 由 restoreSession 自行处理（静默）；登录失败 401 由登录表单展示，
       // 其余业务请求的 401 才触发统一登出跳转。
       if (!requestUrl.includes('/auth/me') && !requestUrl.includes('/auth/login')) {
-        onUnauthorized?.()
+        onUnauthorized?.((error.config as (typeof error.config & RevisionedRequest) | undefined)?.__sessionRevision)
       }
     }
     return Promise.reject(error)
@@ -438,8 +454,8 @@ export async function getMyFavoritesPage(page = 1, pageSize = 10): Promise<Paged
   return response.data
 }
 
-export async function createFoodCheckin(foodId: number, payload: { eatenOn: string; note?: string; visibility: 'PUBLIC' | 'PRIVATE'; timezone: string }): Promise<FoodCheckin> {
-  const response = await api.post<FoodCheckin>(`/foods/${foodId}/check-ins`, payload)
+export async function createFoodCheckin(foodId: number, payload: { eatenOn: string; note?: string; visibility: 'PUBLIC' | 'PRIVATE'; timezone: string }, idempotencyKey: string): Promise<FoodCheckin> {
+  const response = await api.post<FoodCheckin>(`/foods/${foodId}/check-ins`, payload, { headers: { 'Idempotency-Key': idempotencyKey } })
   return response.data
 }
 
@@ -454,8 +470,8 @@ export async function updateMyCheckin(id: number, payload: { eatenOn: string; no
   return response.data
 }
 
-export async function deleteMyCheckin(id: number): Promise<void> {
-  await api.delete(`/profile/check-ins/${id}`)
+export async function deleteMyCheckin(id: number, version: number): Promise<void> {
+  await api.delete(`/profile/check-ins/${id}`, { params: { version } })
 }
 
 export async function getFoodTags(type?: FoodTag['type'], keyword?: string): Promise<FoodTag[]> {

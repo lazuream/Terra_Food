@@ -262,6 +262,8 @@ export default {
     imageTooLarge: '图片超过 5MB，请重新选择。',
     imageInvalidType: '仅支持 JPG、PNG 或 WebP 图片。',
     cancelUpload: '取消上传',
+    uploadingImage: '正在上传图片…',
+    savingFood: '正在保存菜品…',
     saving: '正在收录……',
     submit: '收入珍馐志',
   },

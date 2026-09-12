@@ -4,6 +4,7 @@ import { isAxiosError } from 'axios'
 import { getCurrentUser, login as requestLogin, logout as requestLogout } from './api'
 import { useAchievementNotifications } from './achievement'
 import type { AuthUser, LoginPayload, UserRole } from './types'
+import { clearDraftsForUser } from './drafts'
 
 const currentUser = ref<AuthUser | null>(null)
 const achievementNotifications = useAchievementNotifications()
@@ -35,6 +36,8 @@ export function isAdminRole(role?: UserRole): boolean {
 }
 
 export function useAuth() {
+  function getSessionRevision() { return sessionRevision }
+
   async function restoreSession(force = false) {
     if (restoring?.revision === sessionRevision) return restoring.promise
     if (!force && sessionChecked) {
@@ -73,9 +76,9 @@ export function useAuth() {
   }
 
   async function login(payload: LoginPayload) {
-    ++sessionRevision
+    const revision = ++sessionRevision
     const user = await requestLogin(payload)
-    ++sessionRevision
+    if (revision !== sessionRevision) throw new Error('登录状态已在其他页面发生变化')
     applyUser(user)
     sessionChecked = true
     notifySessionChange()
@@ -84,25 +87,34 @@ export function useAuth() {
   }
 
   async function logout() {
+    const exitingUserId = currentUser.value?.id
     ++sessionRevision
     try {
       await requestLogout()
     } finally {
-      clearSession()
+      if (exitingUserId != null) clearDraftsForUser(exitingUserId)
+      clearSession(true)
     }
   }
 
-  function clearSession() {
+  function clearSession(broadcast = true) {
     ++sessionRevision
     currentUser.value = null
     achievementNotifications.clear()
     sessionChecked = true
-    notifySessionChange()
+    if (broadcast) notifySessionChange()
   }
 
-  function setCurrentUser(user: AuthUser) {
-    ++sessionRevision
+  function setCurrentUser(user: AuthUser, expectedRevision = sessionRevision, expectedUserId = currentUser.value?.id) {
+    if (expectedRevision !== sessionRevision || expectedUserId !== currentUser.value?.id || user.id !== expectedUserId) return false
     applyUser(user)
+    return true
+  }
+
+  async function handleExternalSessionChange() {
+    clearSession(false)
+    sessionChecked = false
+    await restoreSession(true)
   }
 
   return {
@@ -112,5 +124,7 @@ export function useAuth() {
     logout,
     clearSession,
     setCurrentUser,
+    getSessionRevision,
+    handleExternalSessionChange,
   }
 }

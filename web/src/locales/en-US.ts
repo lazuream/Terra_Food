@@ -262,6 +262,8 @@ export default {
     imageTooLarge: 'The image is larger than 5 MB. Choose another file.',
     imageInvalidType: 'Only JPG, PNG, and WebP images are supported.',
     cancelUpload: 'Cancel upload',
+    uploadingImage: 'Uploading image…',
+    savingFood: 'Saving food…',
     saving: 'Saving…',
     submit: 'Add to the Collection',
   },

@@ -4,6 +4,7 @@ import com.dayan.food.entity.enums.FoodReviewStatus;
 import jakarta.validation.constraints.NotNull;
 
 public record FoodReviewDTO(
-        @NotNull FoodReviewStatus status
+        @NotNull FoodReviewStatus status,
+        @NotNull Long expectedVersion
 ) {
 }

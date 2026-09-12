@@ -18,7 +18,11 @@ public class FoodCheckinController {
     private final FoodCheckinService service;
     public FoodCheckinController(FoodCheckinService service) { this.service = service; }
     @PostMapping("/api/foods/{foodId}/check-ins") @ResponseStatus(HttpStatus.CREATED)
-    public ResponseEntity<FoodCheckinVO> create(@PathVariable Long foodId, @Valid @RequestBody FoodCheckinCreateDTO request, Authentication auth) { return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore()).body(service.create(foodId, request, auth.getName())); }
+    public ResponseEntity<FoodCheckinVO> create(@PathVariable Long foodId, @Valid @RequestBody FoodCheckinCreateDTO request,
+            @RequestHeader(value="Idempotency-Key", required=false) String idempotencyKey, Authentication auth) {
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
+                .body(service.create(foodId, request, auth.getName(), idempotencyKey));
+    }
     @GetMapping("/api/profile/check-ins")
     public ResponseEntity<FoodCheckinPageVO> mine(@RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="20") int pageSize,
             @RequestParam(required=false) String visibility, @RequestParam(required=false) LocalDate from,
@@ -30,8 +34,8 @@ public class FoodCheckinController {
     @PatchMapping("/api/profile/check-ins/{id}")
     public ResponseEntity<FoodCheckinVO> update(@PathVariable Long id, @Valid @RequestBody FoodCheckinUpdateDTO request, Authentication auth) { return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.updateMine(id, request, auth.getName())); }
     @DeleteMapping("/api/profile/check-ins/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id, Authentication auth) {
-        service.deleteMine(id, auth.getName());
+    public ResponseEntity<Void> delete(@PathVariable Long id, @RequestParam int version, Authentication auth) {
+        service.deleteMine(id, version, auth.getName());
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
 }

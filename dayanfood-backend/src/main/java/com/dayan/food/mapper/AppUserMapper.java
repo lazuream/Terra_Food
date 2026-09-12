@@ -50,6 +50,7 @@ public interface AppUserMapper {
     );
 
     int deleteById(Long id);
+    int enqueueExternalDeletion(@Param("subjectId") String subjectId, @Param("target") String target);
 
     int insert(AppUser user);
 }

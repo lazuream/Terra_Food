@@ -5,7 +5,7 @@ import { createFoodTag, getFoodTags } from '../api'
 import { apiErrorMessage } from '../apiError'
 import type { FoodTag } from '../types'
 
-const props = defineProps<{ modelValue: number[] }>()
+const props = defineProps<{ modelValue?: number[]; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: number[]] }>()
 const { t } = useI18n()
 const tags = ref<FoodTag[]>([])
@@ -14,11 +14,12 @@ const error = ref('')
 const draftNames = ref<Record<FoodTag['type'], string>>({ TASTE: '', INGREDIENT: '', CUISINE: '' })
 const creating = ref<FoodTag['type']>()
 const types: FoodTag['type'][] = ['TASTE', 'INGREDIENT', 'CUISINE']
-const selected = computed(() => new Set(props.modelValue))
+const selected = computed(() => new Set(props.modelValue ?? []))
 
 function tagsFor(type: FoodTag['type']) { return tags.value.filter((tag) => tag.type === type) }
 function toggle(tag: FoodTag) {
-  const next = new Set(props.modelValue)
+  if (props.disabled || loading.value) return
+  const next = new Set(props.modelValue ?? [])
   if (next.has(tag.id)) next.delete(tag.id)
   else {
     if (tagsFor(tag.type).filter((item) => next.has(item.id)).length >= 10) {
@@ -31,6 +32,7 @@ function toggle(tag: FoodTag) {
 }
 
 async function add(type: FoodTag['type']) {
+  if (props.disabled || loading.value) return
   const name = draftNames.value[type].trim()
   if (!name) return
   creating.value = type
@@ -63,10 +65,11 @@ onMounted(async () => {
           {{ tag.name }}<small v-if="tag.status === 'PENDING'">{{ t('tagPicker.pending') }}</small>
         </button>
       </div>
-      <form class="tag-create" @submit.prevent="add(type)">
-        <input v-model="draftNames[type]" maxlength="30" :placeholder="t('tagPicker.newPlaceholder')">
-        <button :disabled="creating === type">{{ t('tagPicker.create') }}</button>
-      </form>
+      <div class="tag-create">
+        <input v-model="draftNames[type]" maxlength="30" :disabled="disabled || loading"
+          :placeholder="t('tagPicker.newPlaceholder')" @keydown.enter.prevent.stop="add(type)">
+        <button type="button" :disabled="disabled || loading || creating === type" @click="add(type)">{{ t('tagPicker.create') }}</button>
+      </div>
     </div>
     <p v-if="error" class="form-error">{{ error }}</p>
   </section>

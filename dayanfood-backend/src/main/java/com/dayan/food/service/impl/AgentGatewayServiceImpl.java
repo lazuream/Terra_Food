@@ -38,7 +38,7 @@ public class AgentGatewayServiceImpl implements AgentGatewayService {
         this.foodService = foodService;
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(5));
-        requestFactory.setReadTimeout(Duration.ofSeconds(90));
+        requestFactory.setReadTimeout(Duration.ofSeconds(55));
         this.restClient = restClientBuilder.requestFactory(requestFactory).build();
         this.agentServiceUrl = agentServiceUrl;
         this.internalToken = internalToken;
@@ -61,6 +61,7 @@ public class AgentGatewayServiceImpl implements AgentGatewayService {
                     .uri(agentServiceUrl + "/chat")
                     .header("X-Agent-Internal-Token", internalToken)
                     .body(new AgentRuntimeRequestDTO(
+                            user.getSubjectId(),
                             username,
                             user.getDisplayName(),
                             message.trim(),

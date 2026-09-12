@@ -3,7 +3,7 @@ package com.dayan.food.service.impl;
 import com.dayan.food.entity.po.AppUser;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.service.AppUserDetailsService;
-import org.springframework.security.core.userdetails.User;
+import com.dayan.food.security.AppUserPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
@@ -27,10 +27,6 @@ public class AppUserDetailsServiceImpl implements AppUserDetailsService {
             throw new UsernameNotFoundException("用户不存在");
         }
 
-        return User.withUsername(appUser.getUsername())
-                .password(appUser.getPassword())
-                .roles(appUser.getRole().name())
-                .disabled(!appUser.isActive())
-                .build();
+        return AppUserPrincipal.from(appUser);
     }
 }

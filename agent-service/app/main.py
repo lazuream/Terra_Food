@@ -22,9 +22,13 @@ from .config import settings
 app = FastAPI(title="Terra Food Agent", version="0.1.0")
 _memory_store: Milvus | None = None
 _memory_lock = asyncio.Lock()
+_agent_slots = asyncio.Semaphore(4)
+_active_subjects: set[str] = set()
+_active_subjects_lock = asyncio.Lock()
 
 
 class ChatRequest(BaseModel):
+    subjectId: str = Field(min_length=36, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
     username: str = Field(min_length=1, max_length=50)
     displayName: str = Field(min_length=1, max_length=50)
     message: str = Field(min_length=1, max_length=1000)
@@ -86,30 +90,30 @@ async def get_memory_store() -> Milvus | None:
     return _memory_store
 
 
-async def recall_memories(username: str, query: str) -> str:
+async def recall_memories(subject_id: str, query: str) -> str:
     store = await get_memory_store()
     if store is None:
         return "暂无可用的长期对话记忆。"
-    safe_username = username.replace("\\", "\\\\").replace("'", "\\'")
+    safe_subject = subject_id.replace("\\", "\\\\").replace("'", "\\'")
     try:
         documents = await asyncio.to_thread(
             store.similarity_search,
             query,
             4,
-            expr=f"username == '{safe_username}'",
+            expr=f"subject_id == '{safe_subject}'",
         )
     except Exception:
         return "长期记忆暂时不可用。"
     return "\n".join(f"- {document.page_content}" for document in documents) or "暂无相关记忆。"
 
 
-async def remember_exchange(username: str, user_message: str, reply: str) -> None:
+async def remember_exchange(subject_id: str, user_message: str, reply: str) -> None:
     store = await get_memory_store()
     if store is None:
         return
     document = Document(
         page_content=f"用户：{user_message}\n余：{reply}",
-        metadata={"username": username, "kind": "conversation"},
+        metadata={"subject_id": subject_id, "kind": "conversation"},
     )
     try:
         await asyncio.to_thread(store.add_documents, [document])
@@ -221,7 +225,11 @@ def find_comment_draft(value: Any) -> CommentDraft | None:
 
 async def build_tools(request: ChatRequest):
     client = MultiServerMCPClient(
-        {"terra_food": {"transport": "streamable_http", "url": settings.mcp_url}}
+        {"terra_food": {
+            "transport": "streamable_http",
+            "url": settings.mcp_url,
+            "headers": {"Authorization": f"Bearer {settings.mcp_internal_token}"},
+        }}
     )
     raw_tools = {item.name: item for item in await client.get_tools()}
 
@@ -280,10 +288,29 @@ async def health() -> dict[str, str]:
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_internal_token)])
 async def chat(request: ChatRequest) -> ChatResponse:
+    async with _active_subjects_lock:
+        if request.subjectId in _active_subjects:
+            raise HTTPException(status_code=429, detail="only one active Agent request is allowed per user")
+        _active_subjects.add(request.subjectId)
+    acquired = False
+    try:
+        await asyncio.wait_for(_agent_slots.acquire(), timeout=2.0)
+        acquired = True
+        return await asyncio.wait_for(_run_chat(request), timeout=50.0)
+    except TimeoutError as error:
+        raise HTTPException(status_code=503, detail="Agent is busy or timed out") from error
+    finally:
+        if acquired:
+            _agent_slots.release()
+        async with _active_subjects_lock:
+            _active_subjects.discard(request.subjectId)
+
+
+async def _run_chat(request: ChatRequest) -> ChatResponse:
     if not settings.openai_api_key:
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY is not configured")
 
-    memories = await recall_memories(request.username, request.message)
+    memories = await recall_memories(request.subjectId, request.message)
     tools = await build_tools(request)
     model = ChatOpenAI(
         model=settings.model,
@@ -316,7 +343,10 @@ async def chat(request: ChatRequest) -> ChatResponse:
 {memories}
 """.strip()
     agent = create_agent(model=model, tools=tools, system_prompt=system_prompt)
-    result = await agent.ainvoke({"messages": [{"role": "user", "content": request.message}]})
+    result = await agent.ainvoke(
+        {"messages": [{"role": "user", "content": request.message}]},
+        config={"recursion_limit": 12},
+    )
     messages = result.get("messages", [])
     assistant_messages = [item for item in messages if isinstance(item, AIMessage)]
     raw_reply = message_text(assistant_messages[-1]) if assistant_messages else "我暂时没有组织好回答，请再说一次。"
@@ -342,7 +372,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             if comment_draft:
                 break
 
-    await remember_exchange(request.username, request.message, reply)
+    await remember_exchange(request.subjectId, request.message, reply)
     return ChatResponse(
         reply=reply,
         clientAction=action,

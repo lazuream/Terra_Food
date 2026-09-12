@@ -19,6 +19,12 @@
   <select id="findByUser" resultMap="checkin">SELECT <include refid="columns"/> FROM food_checkin WHERE <include refid="userFilters"/> ORDER BY eaten_on DESC,id DESC LIMIT #{limit} OFFSET #{offset}</select>
   <select id="countByUser" resultType="int">SELECT COUNT(*) FROM food_checkin WHERE <include refid="userFilters"/></select>
   <select id="findOwned" resultMap="checkin">SELECT <include refid="columns"/> FROM food_checkin WHERE id=#{id} AND user_id=#{userId}</select>
+  <select id="findOwnedForUpdate" resultMap="checkin">SELECT <include refid="columns"/> FROM food_checkin WHERE id=#{id} AND user_id=#{userId} FOR UPDATE</select>
+  <select id="findIdempotentResult" resultType="long">SELECT checkin_id FROM food_checkin_idempotency WHERE user_id=#{userId} AND idem_key=#{idemKey} AND request_hash=#{requestHash} AND expires_at &gt; CURRENT_TIMESTAMP FOR UPDATE</select>
+  <select id="findIdempotentHash" resultType="string">SELECT request_hash FROM food_checkin_idempotency WHERE user_id=#{userId} AND idem_key=#{idemKey} AND expires_at &gt; CURRENT_TIMESTAMP FOR UPDATE</select>
+  <insert id="insertIdempotency">INSERT INTO food_checkin_idempotency(user_id,idem_key,request_hash,expires_at) VALUES(#{userId},#{idemKey},#{requestHash},TIMESTAMPADD(HOUR,24,CURRENT_TIMESTAMP))</insert>
+  <delete id="deleteExpiredIdempotency">DELETE FROM food_checkin_idempotency WHERE user_id=#{userId} AND idem_key=#{idemKey} AND expires_at &lt;= CURRENT_TIMESTAMP</delete>
+  <update id="attachIdempotentResult">UPDATE food_checkin_idempotency SET checkin_id=#{checkinId} WHERE user_id=#{userId} AND idem_key=#{idemKey} AND checkin_id IS NULL</update>
   <update id="updateOwned">UPDATE food_checkin SET eaten_on=#{eatenOn},note=#{note},visibility=#{visibility},comment_id=#{commentId},timezone=#{timezone},version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=#{id} AND user_id=#{userId} AND version=#{version}</update>
-  <delete id="deleteOwned">DELETE FROM food_checkin WHERE id=#{id} AND user_id=#{userId}</delete>
+  <delete id="deleteOwned">DELETE FROM food_checkin WHERE id=#{id} AND user_id=#{userId} AND version=#{version}</delete>
 </mapper>

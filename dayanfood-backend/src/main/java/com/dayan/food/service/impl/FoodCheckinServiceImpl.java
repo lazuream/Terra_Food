@@ -19,6 +19,9 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.DateTimeException;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 @Service
 public class FoodCheckinServiceImpl implements FoodCheckinService {
@@ -37,7 +40,7 @@ public class FoodCheckinServiceImpl implements FoodCheckinService {
         this.commentMapper = commentMapper;
     }
     @Override @Transactional
-    public FoodCheckinVO create(Long foodId, FoodCheckinCreateDTO request, String username) {
+    public FoodCheckinVO create(Long foodId, FoodCheckinCreateDTO request, String username, String idempotencyKey) {
         var food = foods.findById(foodId);
         if (food == null || food.getReviewStatus() != com.dayan.food.entity.enums.FoodReviewStatus.APPROVED) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "美食不存在");
         var user = users.findByUsername(username); if (user == null || !user.isActive()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录用户不存在或已停用");
@@ -45,6 +48,23 @@ public class FoodCheckinServiceImpl implements FoodCheckinService {
         if (request.eatenOn().isAfter(LocalDate.now(ZoneId.of(timezone)))) throw new IllegalArgumentException("打卡日期不能晚于今天");
         String note = request.note() == null ? null : request.note().trim();
         String visibility = request.normalizedVisibility();
+        String key = normalizeKey(idempotencyKey);
+        String hash = requestHash(foodId, request.eatenOn(), note, visibility, timezone);
+        if (key != null) {
+            users.findByUsernameForUpdate(username);
+            String existingHash = mapper.findIdempotentHash(user.getId(), key);
+            if (existingHash != null && !existingHash.equals(hash)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "同一幂等标识不能用于不同的打卡内容");
+            }
+            if (existingHash != null) {
+                Long resultId = mapper.findIdempotentResult(user.getId(), key, hash);
+                var existing = resultId == null ? null : mapper.findOwned(resultId, user.getId());
+                if (existing != null) return FoodCheckinVO.from(existing);
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "前一次打卡仍在处理中，请稍后重试");
+            }
+            mapper.deleteExpiredIdempotency(user.getId(), key);
+            mapper.insertIdempotency(user.getId(), key, hash);
+        }
         Long commentId = null;
         if ("PUBLIC".equals(visibility)) {
             commentId = comments.create(foodId, publicText(note), username).id();
@@ -52,6 +72,9 @@ public class FoodCheckinServiceImpl implements FoodCheckinService {
         var checkin = new FoodCheckin(foodId, user.getId(), food.getName(), request.eatenOn(), note,
                 visibility, commentId, timezone);
         if (mapper.insert(checkin) != 1 || checkin.getId() == null) throw new IllegalStateException("打卡保存失败");
+        if (key != null && mapper.attachIdempotentResult(user.getId(), key, checkin.getId()) != 1) {
+            throw new IllegalStateException("打卡幂等结果保存失败");
+        }
         return FoodCheckinVO.from(mapper.findOwned(checkin.getId(), user.getId()));
     }
     @Override @Transactional(readOnly = true)
@@ -81,7 +104,7 @@ public class FoodCheckinServiceImpl implements FoodCheckinService {
         var user = requireUser(username);
         String timezone = timezone(request.normalizedTimezone());
         if (request.eatenOn().isAfter(LocalDate.now(ZoneId.of(timezone)))) throw new IllegalArgumentException("打卡日期不能晚于今天");
-        var current = mapper.findOwned(id, user.getId());
+        var current = mapper.findOwnedForUpdate(id, user.getId());
         if (current == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "打卡不存在");
         String note = request.note() == null ? null : request.note().trim();
         Long commentId = current.getCommentId();
@@ -103,11 +126,12 @@ public class FoodCheckinServiceImpl implements FoodCheckinService {
         return FoodCheckinVO.from(mapper.findOwned(id, user.getId()));
     }
     @Override @Transactional
-    public void deleteMine(Long id, String username) {
+    public void deleteMine(Long id, int expectedVersion, String username) {
         var user = requireUser(username);
-        var current = mapper.findOwned(id, user.getId());
+        var current = mapper.findOwnedForUpdate(id, user.getId());
         if (current == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "打卡不存在");
-        if (mapper.deleteOwned(id, user.getId()) != 1) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "打卡不存在");
+        if (current.getVersion() != expectedVersion) throw new ResponseStatusException(HttpStatus.CONFLICT, "打卡已在其他页面修改，请刷新后重试");
+        if (mapper.deleteOwned(id, user.getId(), expectedVersion) != 1) throw new ResponseStatusException(HttpStatus.CONFLICT, "打卡已在其他页面修改，请刷新后重试");
         if (current.getCommentId() != null && commentMapper.deleteOwned(current.getCommentId(), user.getId()) != 1) {
             throw new IllegalStateException("公开打卡删除失败");
         }
@@ -133,5 +157,24 @@ public class FoodCheckinServiceImpl implements FoodCheckinService {
     private String timezone(String value) {
         try { return ZoneId.of(value).getId(); }
         catch (DateTimeException exception) { throw new IllegalArgumentException("时区无效"); }
+    }
+
+    private String normalizeKey(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim();
+        if (normalized.length() > 100 || !normalized.matches("[A-Za-z0-9._:-]+")) {
+            throw new IllegalArgumentException("幂等标识格式无效");
+        }
+        return normalized;
+    }
+
+    private String requestHash(Long foodId, LocalDate eatenOn, String note, String visibility, String timezone) {
+        String canonical = foodId + "\n" + eatenOn + "\n" + (note == null ? "" : note) + "\n" + visibility + "\n" + timezone;
+        try {
+            return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(canonical.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
     }
 }

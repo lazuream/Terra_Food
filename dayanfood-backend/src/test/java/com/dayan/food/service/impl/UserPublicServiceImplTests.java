@@ -49,7 +49,7 @@ class UserPublicServiceImplTests {
         AppUser user = user(3L, "tester", true);
         ReflectionTestUtils.setField(user, "signature", "  人间烟火气  ");
         when(appUserMapper.findPublicById(3L)).thenReturn(user);
-        when(foodMapper.findApprovedByCreatedBy("tester", 100)).thenReturn(List.of());
+        when(foodMapper.findApprovedByCreatedBy(3L, 100)).thenReturn(List.of());
 
         UserPublicVO profile = service.getProfile(3L);
 
@@ -63,7 +63,7 @@ class UserPublicServiceImplTests {
     void blankSignatureIsHiddenFromPublicProfile() {
         AppUser user = user(3L, "tester", true);
         when(appUserMapper.findPublicById(3L)).thenReturn(user);
-        when(foodMapper.findApprovedByCreatedBy("tester", 100)).thenReturn(List.of());
+        when(foodMapper.findApprovedByCreatedBy(3L, 100)).thenReturn(List.of());
 
         UserPublicVO profile = service.getProfile(3L);
 

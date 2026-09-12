@@ -32,8 +32,7 @@ public class SecurityConfig {
             ActiveSessionFilter activeSessionFilter
     ) throws Exception {
         return http
-                // 当前前后端通过同源 Vite 代理访问；API 使用 Session，但不依赖表单 CSRF token。
-                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/**"))
+                .csrf(csrf -> csrf.ignoringRequestMatchers("/api/internal/agent/**"))
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
@@ -43,6 +42,7 @@ public class SecurityConfig {
                                 "/api/auth/registration-code",
                                 "/api/auth/password-reset-code",
                                 "/api/auth/password-reset",
+                                "/api/auth/csrf",
                                 "/api/internal/agent/**",
                                 "/uploads/**",
                                 "/error"

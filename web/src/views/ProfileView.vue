@@ -18,6 +18,9 @@ const auth = useAuth()
 const foods = ref<Food[]>([])
 const footprints = ref<FoodFootprint[]>([])
 const checkins = ref<FoodCheckin[]>([])
+const checkinPage = ref(1)
+const checkinTotal = ref(0)
+const checkinLoadingMore = ref(false)
 const checkinEditing = ref<number>()
 const checkinSaving = ref<number>()
 const checkinError = ref('')
@@ -115,9 +118,22 @@ async function removeCheckin(item: FoodCheckin) {
   if (!window.confirm(`删除“${item.foodName}”的这次打卡？`)) return
   checkinSaving.value = item.id
   checkinError.value = ''
-  try { await deleteMyCheckin(item.id); checkins.value = checkins.value.filter((candidate) => candidate.id !== item.id) }
+  try { await deleteMyCheckin(item.id, item.version); checkins.value = checkins.value.filter((candidate) => candidate.id !== item.id) }
   catch (cause) { checkinError.value = apiErrorMessage(cause, '打卡删除失败，请重试。') }
   finally { checkinSaving.value = undefined }
+}
+
+async function loadMoreCheckins() {
+  if (checkinLoadingMore.value || checkins.value.length >= checkinTotal.value) return
+  checkinLoadingMore.value = true
+  checkinError.value = ''
+  try {
+    const result = await getMyCheckins(checkinPage.value + 1)
+    checkinPage.value = result.page
+    checkinTotal.value = result.total
+    checkins.value.push(...result.items.filter((item) => !checkins.value.some((existing) => existing.id === item.id)))
+  } catch (cause) { checkinError.value = apiErrorMessage(cause, '打卡加载失败，请重试。') }
+  finally { checkinLoadingMore.value = false }
 }
 
 async function createWishlistItem() {
@@ -196,9 +212,11 @@ async function saveSignature() {
 
   signatureSaving.value = true
   signatureError.value = ''
+  const revision = auth.getSessionRevision()
+  const userId = user.value?.id
   try {
     const updatedUser = await updateMySignature(draft)
-    auth.setCurrentUser(updatedUser)
+    if (!auth.setCurrentUser(updatedUser, revision, userId)) return
     signatureEditing.value = false
   } catch (requestError) {
     signatureError.value = axios.isAxiosError(requestError)
@@ -224,9 +242,11 @@ async function saveDisplayName() {
 
   displayNameSaving.value = true
   displayNameError.value = ''
+  const revision = auth.getSessionRevision()
+  const userId = user.value?.id
   try {
     const updatedUser = await updateMyDisplayName(draft)
-    auth.setCurrentUser(updatedUser)
+    if (!auth.setCurrentUser(updatedUser, revision, userId)) return
     displayNameEditing.value = false
   } catch (requestError) {
     displayNameError.value = axios.isAxiosError(requestError)
@@ -293,10 +313,13 @@ async function changeAvatar(event: Event) {
 
   avatarSaving.value = true
   avatarError.value = ''
+  const revision = auth.getSessionRevision()
+  const userId = user.value?.id
   try {
     const avatarUrl = await uploadImage(file)
+    if (revision !== auth.getSessionRevision() || userId !== user.value?.id) return
     const updatedUser = await updateAvatar(avatarUrl)
-    auth.setCurrentUser(updatedUser)
+    auth.setCurrentUser(updatedUser, revision, userId)
   } catch {
     avatarError.value = t('profile.avatarError')
   } finally {
@@ -326,7 +349,12 @@ async function loadProfile() {
     await Promise.all([
       section('foods', async () => { foods.value = await getMyFoods() }),
       section('footprints', async () => { footprints.value = await getMyFootprints() }),
-      section('checkins', async () => { checkins.value = (await getMyCheckins()).items }),
+      section('checkins', async () => {
+        const result = await getMyCheckins()
+        checkins.value = result.items
+        checkinPage.value = result.page
+        checkinTotal.value = result.total
+      }),
       section('regions', async () => { regions.value = await getRegions() }),
       section('achievements', async () => { achievements.value = await getAchievements() }),
       section('etchings', async () => { etchings.value = await getMyEtchings() }),
@@ -594,7 +622,10 @@ watch(collectionTab, () => { void loadCurrentCollection(true) }, { immediate: tr
         </article>
       </div>
       <p v-if="checkinError" class="collection-error">{{ checkinError }}</p>
-      <p v-else-if="!loading && !loadFailures.includes('checkins')" class="collection-empty">还没有打卡，去菜品详情记录第一次体验吧。</p>
+      <button v-if="checkins.length < checkinTotal" type="button" :disabled="checkinLoadingMore" @click="loadMoreCheckins">
+        {{ checkinLoadingMore ? '加载中…' : '加载更多' }}
+      </button>
+      <p v-else-if="!checkins.length && !loading && !loadFailures.includes('checkins')" class="collection-empty">还没有打卡，去菜品详情记录第一次体验吧。</p>
     </section>
 
     <section class="profile-layout">

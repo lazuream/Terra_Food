@@ -119,17 +119,17 @@ public interface FoodMapper {
             @Param("minLongitude") java.math.BigDecimal minLongitude, @Param("maxLongitude") java.math.BigDecimal maxLongitude,
             @Param("zoom") int zoom, @Param("limit") int limit);
 
-    List<Food> findByCreatedBy(String username);
+    List<Food> findByCreatedBy(@Param("userId") Long userId);
 
-    List<Food> findApprovedByCreatedBy(@Param("username") String username, @Param("limit") int limit);
+    List<Food> findApprovedByCreatedBy(@Param("userId") Long userId, @Param("limit") int limit);
 
     List<Food> findMatchingCandidates(@Param("tokens") List<String> tokens, @Param("limit") int limit);
 
-    Food findOwnedById(@Param("id") Long id, @Param("username") String username);
+    Food findOwnedById(@Param("id") Long id, @Param("userId") Long userId);
 
     int updateOwnedDetails(
             @Param("id") Long id,
-            @Param("username") String username,
+            @Param("userId") Long userId,
             @Param("name") String name,
             @Param("regionId") Long regionId,
             @Param("latitude") java.math.BigDecimal latitude,
@@ -181,7 +181,8 @@ public interface FoodMapper {
     int updateReviewStatus(
             @Param("id") Long id,
             @Param("status") FoodReviewStatus status,
-            @Param("reviewedBy") String reviewedBy
+            @Param("reviewedBy") String reviewedBy,
+            @Param("expectedVersion") long expectedVersion
     );
 
     int deleteById(Long id);

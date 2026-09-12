@@ -1,6 +1,7 @@
 package com.dayan.food.config;
 
 import com.dayan.food.mapper.AppUserMapper;
+import com.dayan.food.security.AppUserPrincipal;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,17 +41,15 @@ public class ActiveSessionFilter extends OncePerRequestFilter {
         if (authentication != null
                 && authentication.isAuthenticated()
                 && !(authentication instanceof AnonymousAuthenticationToken)) {
-            var user = appUserMapper.findByUsername(authentication.getName());
-            if (user == null || !user.isActive()) {
-                SecurityContextHolder.clearContext();
-                var session = request.getSession(false);
-                if (session != null) {
-                    session.invalidate();
-                }
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                response.setCharacterEncoding("UTF-8");
-                response.setContentType("application/json");
-                response.getWriter().write("{\"message\":\"账号已停用或不存在，请重新登录\"}");
+            if (!(authentication.getPrincipal() instanceof AppUserPrincipal principal)) {
+                reject(request, response);
+                return;
+            }
+            var user = appUserMapper.findById(principal.userId());
+            if (user == null || !user.isActive()
+                    || !user.getSubjectId().equals(principal.subjectId())
+                    || user.getAuthVersion() != principal.authVersion()) {
+                reject(request, response);
                 return;
             }
 
@@ -70,5 +69,15 @@ public class ActiveSessionFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void reject(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        SecurityContextHolder.clearContext();
+        var session = request.getSession(false);
+        if (session != null) session.invalidate();
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("application/json");
+        response.getWriter().write("{\"code\":\"SESSION_REVOKED\",\"message\":\"会话已失效，请重新登录\"}");
     }
 }

@@ -34,7 +34,7 @@ const form = reactive<FoodUpdatePayload>({
   ingredients: props.food.ingredients,
   imageUrl: props.food.imageUrl,
   remark: props.food.remark || '',
-  tagIds: [],
+  tagIds: undefined,
 })
 const image = ref<File>()
 const imageMeta = ref<DraftImageMeta>()
@@ -57,9 +57,14 @@ interface EditDraft {
   image?: DraftImageMeta
   imageUrl?: string
   tagIds?: number[]
+  expiresAt: number
 }
 
-const draft = readDraft<EditDraft>(DRAFT_KEY)
+let draft = readDraft<EditDraft>(DRAFT_KEY)
+if (draft && (!Number.isFinite(draft.expiresAt) || draft.expiresAt <= Date.now())) {
+  clearDraft(DRAFT_KEY)
+  draft = undefined
+}
 if (draft) {
   form.name = draft.name
   form.summary = draft.summary
@@ -67,7 +72,7 @@ if (draft) {
   form.story = draft.story
   form.remark = draft.remark
   form.imageUrl = draft.imageUrl || form.imageUrl
-  form.tagIds = draft.tagIds || []
+  form.tagIds = draft.tagIds
   if (draft.image) {
     imageMeta.value = draft.image
     const cachedImage = getCachedDraftImage(DRAFT_KEY)
@@ -88,6 +93,7 @@ function persistDraft() {
     image: imageMeta.value,
     imageUrl: form.imageUrl,
     tagIds: form.tagIds,
+    expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
   })
 }
 
@@ -124,7 +130,7 @@ async function submit() {
   saving.value = true
   try {
     if (image.value && !form.imageUrl) { form.imageUrl = await uploadImage(image.value); persistDraft() }
-    const updated = await updateMyFood(props.food.id, form)
+    const updated = await updateMyFood(props.food.id, { ...form, tagIds: form.tagIds })
     clearDraft(DRAFT_KEY)
     forgetDraftImage(DRAFT_KEY)
     emit('saved', updated)
@@ -138,9 +144,9 @@ async function submit() {
 }
 
 onMounted(async () => {
-  if (draft?.tagIds) return
+  if (draft?.tagIds !== undefined) return
   try { form.tagIds = (await getFoodTagsForFood(props.food.id)).map((tag) => tag.id) }
-  catch { /* Editing remains available if tag metadata is temporarily unavailable. */ }
+  catch { error.value = t('tagPicker.loadFailed') }
 })
 </script>
 
@@ -157,6 +163,7 @@ onMounted(async () => {
 
       <p class="profile-review-tip">{{ t('profile.reviewTip') }}</p>
       <form @submit.prevent="submit">
+        <fieldset class="submit-snapshot" :disabled="saving">
         <div class="form-grid">
           <label>
             {{ t('upload.name') }}
@@ -191,7 +198,7 @@ onMounted(async () => {
           {{ t('upload.ingredients') }}
           <input v-model.trim="form.ingredients" required maxlength="500">
         </label>
-        <FoodTagPicker v-model="form.tagIds!" />
+        <FoodTagPicker v-model="form.tagIds" :disabled="saving" />
         <label>
           {{ t('upload.story') }}
           <textarea v-model.trim="form.story" required maxlength="10000" rows="4"></textarea>
@@ -218,6 +225,7 @@ onMounted(async () => {
           <small v-if="imageMeta && !image" class="cover-warning">{{ t('upload.imageNeedsReselect') }}</small>
           <small>{{ food.imageUrl ? t('profile.keepCover') : t('upload.imageTip') }}</small>
         </div>
+        </fieldset>
 
         <p v-if="error" class="form-error">{{ error }}</p>
         <div class="modal-actions">

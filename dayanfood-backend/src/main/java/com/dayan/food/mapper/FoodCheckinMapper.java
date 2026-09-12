@@ -12,9 +12,18 @@ public interface FoodCheckinMapper {
     int countByUser(@Param("userId") Long userId, @Param("visibility") String visibility,
                     @Param("from") java.time.LocalDate from, @Param("to") java.time.LocalDate to);
     FoodCheckin findOwned(@Param("id") Long id, @Param("userId") Long userId);
+    FoodCheckin findOwnedForUpdate(@Param("id") Long id, @Param("userId") Long userId);
+    Long findIdempotentResult(@Param("userId") Long userId, @Param("idemKey") String idemKey,
+                              @Param("requestHash") String requestHash);
+    String findIdempotentHash(@Param("userId") Long userId, @Param("idemKey") String idemKey);
+    int insertIdempotency(@Param("userId") Long userId, @Param("idemKey") String idemKey,
+                          @Param("requestHash") String requestHash);
+    int deleteExpiredIdempotency(@Param("userId") Long userId, @Param("idemKey") String idemKey);
+    int attachIdempotentResult(@Param("userId") Long userId, @Param("idemKey") String idemKey,
+                               @Param("checkinId") Long checkinId);
     int updateOwned(@Param("id") Long id, @Param("userId") Long userId,
                     @Param("eatenOn") java.time.LocalDate eatenOn, @Param("note") String note,
                     @Param("visibility") String visibility, @Param("commentId") Long commentId,
                     @Param("timezone") String timezone, @Param("version") int version);
-    int deleteOwned(@Param("id") Long id, @Param("userId") Long userId);
+    int deleteOwned(@Param("id") Long id, @Param("userId") Long userId, @Param("version") int version);
 }

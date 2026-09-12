@@ -111,7 +111,7 @@ interface UploadDraft {
 }
 
 let draft = readDraft<UploadDraft>(DRAFT_KEY)
-if (draft && draft.expiresAt <= Date.now()) {
+if (draft && (!Number.isFinite(draft.expiresAt) || draft.expiresAt <= Date.now())) {
   clearDraft(DRAFT_KEY)
   draft = undefined
 }
@@ -150,7 +150,7 @@ function persistDraft() {
 }
 
 watch(
-  () => [form.name, form.summary, form.ingredients, form.story, form.remark, form.tagIds, imageMeta.value],
+  () => [{ ...form, tagIds: [...(form.tagIds || [])] }, imageMeta.value],
   () => {
     idempotencyKey.value = crypto.randomUUID()
     persistDraft()
@@ -189,6 +189,7 @@ function selectImage(event: Event) {
 }
 
 async function submit() {
+  if (saving.value) return
   error.value = ''
 
   // 坐标必须来自地图选点，禁止带着默认值直接创建。
@@ -210,16 +211,20 @@ async function submit() {
     }
 
     stage.value = 'saving'
-    const food = await createFood({
+    const submissionKey = idempotencyKey.value
+    const payload = {
       ...form,
       latitude: form.latitude as number,
       longitude: form.longitude as number,
-    }, idempotencyKey.value)
+    }
+    const food = await createFood(payload, submissionKey)
     if (food.reviewStatus === 'PENDING') {
       window.alert(t('upload.pendingSuccess'))
     }
-    clearDraft(DRAFT_KEY)
-    forgetDraftImage(DRAFT_KEY)
+    if (submissionKey === idempotencyKey.value) {
+      clearDraft(DRAFT_KEY)
+      forgetDraftImage(DRAFT_KEY)
+    }
     emit('saved', food)
   } catch (requestError) {
     error.value = apiErrorMessage(requestError, stage.value === 'uploading'
@@ -250,9 +255,10 @@ function cancelUpload() {
 
       <form @submit.prevent="submit">
         <p v-if="stage !== 'idle'" class="form-status" role="status">
-          {{ stage === 'uploading' ? '正在上传图片…' : '正在保存菜品…' }}
+          {{ stage === 'uploading' ? t('upload.uploadingImage') : t('upload.savingFood') }}
           <button v-if="stage === 'uploading'" type="button" @click="cancelUpload">{{ t('upload.cancelUpload') }}</button>
         </p>
+        <fieldset class="submit-snapshot" :disabled="saving">
         <div class="form-grid">
           <label>
             {{ t('upload.name') }}
@@ -288,7 +294,7 @@ function cancelUpload() {
           {{ t('upload.ingredients') }}
           <input v-model="form.ingredients" required maxlength="500">
         </label>
-        <FoodTagPicker v-model="form.tagIds!" />
+        <FoodTagPicker v-model="form.tagIds" :disabled="saving" />
         <label>
           {{ t('upload.story') }}
           <textarea v-model="form.story" required rows="4"></textarea>
@@ -305,9 +311,10 @@ function cancelUpload() {
               class="hidden-file-input"
               type="file"
               accept="image/jpeg,image/png,image/webp"
+              :disabled="saving"
               @change="selectImage"
             >
-            <button type="button" class="cover-pick" @click="coverInput?.click()">
+            <button type="button" class="cover-pick" :disabled="saving" @click="coverInput?.click()">
               {{ image ? t('upload.changeCover') : t('upload.pickCover') }}
             </button>
           </div>
@@ -315,6 +322,7 @@ function cancelUpload() {
           <small v-if="imageMeta && !image" class="cover-warning">{{ t('upload.imageNeedsReselect') }}</small>
           <small>{{ t('upload.imageTip') }}</small>
         </div>
+        </fieldset>
 
         <p v-if="error" class="form-error">{{ error }}</p>
 

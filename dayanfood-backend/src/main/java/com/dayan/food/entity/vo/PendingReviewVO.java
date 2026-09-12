@@ -14,6 +14,7 @@ public record PendingReviewVO(
         ReviewField field,
         String currentValue,
         String pendingValue,
+        Long version,
         LocalDateTime requestedAt
 ) implements Serializable {
 
@@ -23,6 +24,7 @@ public record PendingReviewVO(
                 item.getField(),
                 item.getCurrentValue(),
                 item.getPendingValue(),
+                item.getVersion(),
                 item.getRequestedAt()
         );
     }

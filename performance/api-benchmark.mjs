@@ -15,24 +15,33 @@ const baselinePaths = [
 ]
 const paths = process.env.PERF_API_MODE === 'baseline' ? baselinePaths : optimizedPaths
 const concurrencies = [1, 5, 10, 20]
+const requestsPerWorker = Number(process.env.PERF_REQUESTS_PER_WORKER || 5)
+const timeoutMs = Number(process.env.PERF_REQUEST_TIMEOUT_MS || 10_000)
 const results = []
 
 for (const [path, target] of paths) {
   for (const concurrency of concurrencies) {
     const samples = []
     let failures = 0
-    await Promise.all(Array.from({ length: concurrency * 5 }, async () => {
-      const start = performance.now()
-      try {
-        const response = await fetch(base + path)
-        if (!response.ok) failures++
-        await response.arrayBuffer()
-      } catch { failures++ }
-      samples.push(performance.now() - start)
+    let inFlight = 0
+    let maxInFlight = 0
+    await Promise.all(Array.from({ length: concurrency }, async () => {
+      for (let request = 0; request < requestsPerWorker; request++) {
+        const start = performance.now()
+        inFlight++
+        maxInFlight = Math.max(maxInFlight, inFlight)
+        try {
+          const response = await fetch(base + path, { signal: AbortSignal.timeout(timeoutMs) })
+          if (!response.ok) failures++
+          await response.arrayBuffer()
+        } catch { failures++ }
+        finally { inFlight-- }
+        samples.push(performance.now() - start)
+      }
     }))
     samples.sort((a, b) => a - b)
     const percentile = (p) => samples[Math.min(samples.length - 1, Math.ceil(samples.length * p) - 1)]
-    results.push({ path, concurrency, count: samples.length, failures, medianMs: percentile(.5), p95Ms: percentile(.95), maxMs: samples.at(-1), targetMs: target })
+    results.push({ path, concurrency, maxInFlight, count: samples.length, failures, medianMs: percentile(.5), p95Ms: percentile(.95), maxMs: samples.at(-1), targetMs: target })
     if (failures || percentile(.95) > target * 4) break
   }
 }
@@ -40,4 +49,4 @@ for (const [path, target] of paths) {
 fs.mkdirSync(new URL('.', `file://${output}`).pathname, { recursive: true })
 fs.writeFileSync(output, JSON.stringify({ generatedAt: new Date().toISOString(), base, results }, null, 2))
 console.table(results)
-if (results.some((row) => row.failures)) process.exitCode = 1
+if (results.some((row) => row.failures || row.p95Ms > row.targetMs)) process.exitCode = 1

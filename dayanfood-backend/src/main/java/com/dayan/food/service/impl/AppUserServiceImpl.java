@@ -114,7 +114,7 @@ public class AppUserServiceImpl implements AppUserService {
     @Override
     @CacheEvict(cacheNames = "authUsers", allEntries = true)
     @Transactional
-    public void reviewItem(Long userId, ReviewField field, ReviewStatus status, String operatorUsername) {
+    public void reviewItem(Long userId, ReviewField field, ReviewStatus status, long expectedVersion, String operatorUsername) {
         if (status != ReviewStatus.APPROVED && status != ReviewStatus.REJECTED) {
             throw new IllegalArgumentException("审批结果只能是通过或驳回");
         }
@@ -127,14 +127,18 @@ public class AppUserServiceImpl implements AppUserService {
         if (item == null) {
             throw new IllegalArgumentException("该待审内容不存在或已经处理");
         }
+        if (item.getVersion() != expectedVersion) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "待审内容已变化，请刷新后重新审核");
+        }
 
         if (status == ReviewStatus.APPROVED) {
             applyApprovedValue(user, item);
         }
 
         int updated = status == ReviewStatus.APPROVED
-                ? userReviewItemMapper.approveItem(item.getId(), operatorUsername)
-                : userReviewItemMapper.rejectItem(item.getId(), operatorUsername);
+                ? userReviewItemMapper.approveItem(item.getId(), expectedVersion, operatorUsername)
+                : userReviewItemMapper.rejectItem(item.getId(), expectedVersion, operatorUsername);
         // WHERE status='PENDING' 保障并发下只生效一次。
         if (updated != 1) {
             throw new IllegalArgumentException("该待审内容不存在或已经处理");
@@ -168,7 +172,7 @@ public class AppUserServiceImpl implements AppUserService {
     @Transactional
     public void setActive(Long id, boolean active, String operatorUsername) {
         var operator = findRequiredOperator(operatorUsername);
-        var user = findRequiredUser(id);
+        var user = findExistingUser(id);
         ensureCanManageTarget(operator, user);
 
         if (user.getUsername().equals(operatorUsername) && !active) {
@@ -194,7 +198,7 @@ public class AppUserServiceImpl implements AppUserService {
             throw new IllegalArgumentException("只有主管理员可以调整用户角色");
         }
 
-        var user = findRequiredUser(id);
+        var user = findExistingUser(id);
         if (user.getRole() == UserRole.ADMIN) {
             throw new IllegalArgumentException("不能修改主管理员角色");
         }
@@ -210,11 +214,15 @@ public class AppUserServiceImpl implements AppUserService {
     @Transactional
     public void deleteById(Long id, String operatorUsername) {
         var operator = findRequiredOperator(operatorUsername);
-        var user = findRequiredUser(id);
+        var user = findExistingUser(id);
         ensureCanManageTarget(operator, user);
 
         if (user.getUsername().equals(operatorUsername)) {
             throw new IllegalArgumentException("不能删除当前登录管理员");
+        }
+
+        if (appUserMapper.enqueueExternalDeletion(user.getSubjectId(), "AGENT_MEMORY") != 1) {
+            throw new IllegalStateException("外部身份清理任务登记失败");
         }
 
         // user_review_item 由外键 ON DELETE CASCADE 一并清理。
@@ -241,6 +249,12 @@ public class AppUserServiceImpl implements AppUserService {
         if (user == null || !user.isActive()) {
             throw new IllegalArgumentException("用户不存在");
         }
+        return user;
+    }
+
+    private AppUser findExistingUser(Long id) {
+        var user = appUserMapper.findById(id);
+        if (user == null) throw new IllegalArgumentException("用户不存在");
         return user;
     }
 

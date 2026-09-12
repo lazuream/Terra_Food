@@ -274,7 +274,9 @@ public class FoodServiceImpl implements FoodService {
     @Override
     @Transactional(readOnly = true)
     public List<FoodVO> listMine(String username) {
-        return foodMapper.findByCreatedBy(username).stream()
+        var owner = appUserMapper.findByUsername(username);
+        if (owner == null || !owner.isActive()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录用户不存在或已停用");
+        return foodMapper.findByCreatedBy(owner.getId()).stream()
                 .map(FoodVO::from)
                 .toList();
     }
@@ -316,7 +318,7 @@ public class FoodServiceImpl implements FoodService {
         if (owner == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录用户不存在");
         }
-        var existing = foodMapper.findOwnedById(id, username);
+        var existing = foodMapper.findOwnedById(id, owner.getId());
         if (existing == null) {
             throw notFound("只能编辑自己上传的菜品");
         }
@@ -329,7 +331,7 @@ public class FoodServiceImpl implements FoodService {
         String reviewedBy = null;
         int updated = foodMapper.updateOwnedDetails(
                 id,
-                username,
+                owner.getId(),
                 request.name().trim(),
                 request.regionId(),
                 request.latitude(),
@@ -346,14 +348,14 @@ public class FoodServiceImpl implements FoodService {
         if (updated != 1) {
             throw notFound("只能编辑自己上传的菜品");
         }
-        if (foodTagService != null) foodTagService.replaceFoodTags(id, request.tagIds(), username);
+        if (foodTagService != null && request.tagIds() != null) foodTagService.replaceFoodTags(id, request.tagIds(), username);
         Long previousRegionId = existing.getRegion() == null ? null : existing.getRegion().getId();
         if (!java.util.Objects.equals(previousRegionId, request.regionId())) {
             // Imported labels override region labels; discard them when the region changes.
             foodMapper.updateLocationLabels(id, null, null);
         }
         clearFoodCaches(id);
-        return FoodVO.from(foodMapper.findOwnedById(id, username));
+        return FoodVO.from(foodMapper.findOwnedById(id, owner.getId()));
     }
 
     @Override
@@ -364,7 +366,7 @@ public class FoodServiceImpl implements FoodService {
         if (food == null) {
             throw notFound("美食不存在");
         }
-        return FoodVO.from(food, appUserMapper.findByUsername(food.getCreatedBy()));
+        return FoodVO.from(food, food.getCreatedByUserId() == null ? null : appUserMapper.findById(food.getCreatedByUserId()));
     }
 
     @Override
@@ -390,12 +392,12 @@ public class FoodServiceImpl implements FoodService {
 
     @Override
     @Transactional
-    public void review(Long id, FoodReviewStatus status, String reviewedBy) {
+    public void review(Long id, FoodReviewStatus status, long expectedVersion, String reviewedBy) {
         if (status != FoodReviewStatus.APPROVED && status != FoodReviewStatus.REJECTED) {
             throw new IllegalArgumentException("审批结果只能是通过或驳回");
         }
-        if (foodMapper.updateReviewStatus(id, status, reviewedBy) != 1) {
-            throw new IllegalArgumentException("待审批菜品不存在或已经处理");
+        if (foodMapper.updateReviewStatus(id, status, reviewedBy, expectedVersion) != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "待审内容已变化，请刷新后重新审核");
         }
         clearFoodCaches(id);
     }
@@ -438,6 +440,7 @@ public class FoodServiceImpl implements FoodService {
                 normalizedImageUrl,
                 normalizeOptional(remark),
                 createdBy,
+                uploader.getId(),
                 uploader.getRole() == UserRole.ADMIN || uploader.getRole() == UserRole.SUB_ADMIN
                         ? FoodReviewStatus.APPROVED
                         : FoodReviewStatus.PENDING
@@ -469,7 +472,8 @@ public class FoodServiceImpl implements FoodService {
         foodMapper.updateLocationLabels(created.id(),
                 normalizeOptional(request.province()), normalizeOptional(request.city()));
         if (foodTagService != null) foodTagService.replaceFoodTags(created.id(), request.tagIds(), username);
-        return FoodVO.from(foodMapper.findOwnedById(created.id(), username));
+        var owner = appUserMapper.findByUsername(username);
+        return FoodVO.from(foodMapper.findOwnedById(created.id(), owner.getId()));
     }
 
     private ResponseStatusException notFound(String message) {

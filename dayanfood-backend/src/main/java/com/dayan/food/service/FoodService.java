@@ -72,7 +72,7 @@ public interface FoodService {
 
     void recordVisit(Long id, String username);
 
-    void review(Long id, FoodReviewStatus status, String reviewedBy);
+    void review(Long id, FoodReviewStatus status, long expectedVersion, String reviewedBy);
 
     FoodVO create(
             String name,

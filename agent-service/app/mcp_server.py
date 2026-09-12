@@ -5,17 +5,34 @@ from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.auth.provider import AccessToken, TokenVerifier
+from mcp.server.auth.settings import AuthSettings
+from pydantic import AnyHttpUrl
 
 
 BACKEND_URL = os.getenv("BACKEND_INTERNAL_URL", "http://localhost:8080").rstrip("/")
 INTERNAL_TOKEN = os.getenv("AGENT_INTERNAL_TOKEN", "")
+MCP_TOKEN = os.getenv("MCP_INTERNAL_TOKEN", "")
+
+
+class StaticServiceTokenVerifier(TokenVerifier):
+    async def verify_token(self, token: str) -> AccessToken | None:
+        if not MCP_TOKEN or not __import__("secrets").compare_digest(token, MCP_TOKEN):
+            return None
+        return AccessToken(token=token, client_id="terra-agent-api", scopes=["tools:invoke"])
 
 mcp = FastMCP(
     "Terra Food Tools",
-    instructions="提供菜品热度推荐、浏览足迹推荐、评论发布和客户端音乐切换动作。",
+    instructions="提供菜品热度推荐、浏览足迹推荐和客户端音乐切换动作。",
     host="0.0.0.0",
     port=8091,
     json_response=True,
+    token_verifier=StaticServiceTokenVerifier(),
+    auth=AuthSettings(
+        issuer_url=AnyHttpUrl("http://agent-api:8090"),
+        resource_server_url=AnyHttpUrl("http://agent-mcp:8091/mcp"),
+        required_scopes=["tools:invoke"],
+    ),
 )
 
 
@@ -72,21 +89,6 @@ async def recommend_from_recent_history(
         },
     )
     return {"recommendations": foods, "basis": "recent_history_and_heat"}
-
-
-@mcp.tool()
-async def post_food_comment(username: str, food_id: int, content: str) -> dict[str, Any]:
-    """仅在用户明确确认发布后，以当前账号向指定菜品提交评论。"""
-    comment = await _backend_request(
-        "POST",
-        "/api/internal/agent/comments",
-        json={"username": username, "foodId": food_id, "content": content},
-    )
-    return {
-        "published": True,
-        "comment": comment,
-        "client_action": {"type": "COMMENT_PUBLISHED", "query": str(food_id)},
-    }
 
 
 @mcp.tool()

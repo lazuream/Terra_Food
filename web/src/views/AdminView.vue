@@ -220,7 +220,7 @@ async function reviewSubmission(food: Food, status: Extract<FoodReviewStatus, 'A
 
   pendingFoodIds.value.add(food.id)
   try {
-    await reviewFood(food.id, { status })
+    await reviewFood(food.id, { status, expectedVersion: food.contentVersion })
     await loadFoodsPage(foodsPage.value, foodsPageSize.value)
   } catch {
     error.value = t('admin.reviewError')
@@ -339,7 +339,7 @@ async function reviewItemSubmission(item: PendingReview, status: Extract<ReviewI
   usersLoading.value = true
   usersError.value = ''
   try {
-    await reviewUserItem(targetUser.id, { field: item.field, status })
+    await reviewUserItem(targetUser.id, { field: item.field, status, expectedVersion: item.version })
     reviewingUser.value = null
     await loadUsersPage(usersPage.value, usersPageSize.value)
   } catch {

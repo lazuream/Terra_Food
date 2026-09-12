@@ -21,6 +21,8 @@ public class UserReviewItem {
 
     private ReviewStatus status;
 
+    private Long version;
+
     private LocalDateTime requestedAt;
 
     private String reviewedBy;

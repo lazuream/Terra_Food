@@ -84,8 +84,11 @@ function toggleLocale() {
 
 async function logout() {
   mobileNavOpen.value = false
-  await auth.logout()
-  await router.push('/login')
+  try {
+    await auth.logout()
+  } finally {
+    await router.push('/login')
+  }
 }
 </script>
 
@@ -148,7 +151,7 @@ async function logout() {
       <span>{{ t('common.routeLoadFailed') }}</span>
       <button type="button" @click="reloadPage">{{ t('common.reload') }}</button>
     </div>
-    <RouterView />
+    <RouterView :key="`${route.fullPath}:${auth.getSessionRevision()}:${auth.currentUser.value?.id ?? 'anonymous'}`" />
   </main>
 
   <BackgroundMusic v-if="!isAuthFlowPage" />

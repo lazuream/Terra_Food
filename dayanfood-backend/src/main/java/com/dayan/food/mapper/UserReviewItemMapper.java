@@ -24,9 +24,9 @@ public interface UserReviewItemMapper {
 
     UserReviewItem findPendingById(@Param("id") Long id);
 
-    int approveItem(@Param("id") Long id, @Param("reviewedBy") String reviewedBy);
+    int approveItem(@Param("id") Long id, @Param("expectedVersion") long expectedVersion, @Param("reviewedBy") String reviewedBy);
 
-    int rejectItem(@Param("id") Long id, @Param("reviewedBy") String reviewedBy);
+    int rejectItem(@Param("id") Long id, @Param("expectedVersion") long expectedVersion, @Param("reviewedBy") String reviewedBy);
 
     List<UserReviewItem> findPendingByField(@Param("field") ReviewField field, @Param("limit") int limit);
 }

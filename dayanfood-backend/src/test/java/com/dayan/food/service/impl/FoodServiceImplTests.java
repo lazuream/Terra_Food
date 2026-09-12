@@ -57,9 +57,10 @@ class FoodServiceImplTests {
 
     @Test
     void createsFoodWithoutLookingUpOrCreatingRegion() {
-        when(appUserMapper.findByUsername("reader")).thenReturn(
-                new com.dayan.food.entity.po.AppUser("reader", "unused", "Reader",
-                        com.dayan.food.entity.enums.UserRole.USER));
+        var reader = new com.dayan.food.entity.po.AppUser("reader", "unused", "Reader",
+                com.dayan.food.entity.enums.UserRole.USER);
+        org.springframework.test.util.ReflectionTestUtils.setField(reader, "id", 1L);
+        when(appUserMapper.findByUsername("reader")).thenReturn(reader);
         var result = service.create("Dish", null, java.math.BigDecimal.ONE,
                 java.math.BigDecimal.TEN, "Address", "Summary", "Story", "Ingredients",
                 null, null, "reader");
@@ -72,9 +73,10 @@ class FoodServiceImplTests {
 
     @Test
     void storesCityOnFoodWithoutCreatingRegion() {
-        when(appUserMapper.findByUsername("reader")).thenReturn(
-                new com.dayan.food.entity.po.AppUser("reader", "unused", "Reader",
-                        com.dayan.food.entity.enums.UserRole.USER));
+        var reader = new com.dayan.food.entity.po.AppUser("reader", "unused", "Reader",
+                com.dayan.food.entity.enums.UserRole.USER);
+        org.springframework.test.util.ReflectionTestUtils.setField(reader, "id", 1L);
+        when(appUserMapper.findByUsername("reader")).thenReturn(reader);
         var saved = new com.dayan.food.entity.po.Food("Dish", null,
                 java.math.BigDecimal.ONE, java.math.BigDecimal.TEN, "", "Summary",
                 "Story", "Ingredients", null, null, "reader",
@@ -83,7 +85,7 @@ class FoodServiceImplTests {
             org.springframework.test.util.ReflectionTestUtils.setField((Object) call.getArgument(0), "id", 91L);
             return 1;
         }).when(foodMapper).insert(org.mockito.ArgumentMatchers.any());
-        when(foodMapper.findOwnedById(91L, "reader")).thenReturn(saved);
+        when(foodMapper.findOwnedById(91L, 1L)).thenReturn(saved);
         service.create(new com.dayan.food.entity.dto.FoodCreateDTO("Dish", null,
                 java.math.BigDecimal.ONE, java.math.BigDecimal.TEN, "", "Summary",
                 "Story", "Ingredients", null, null, " 四川省 ", " 成都市 "), "reader");
