@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 /** Runs both on the reactor classpath and through the packaged Boot classloader, without a database. */
 public final class ModuleClasspathProbe {
     private static final Set<String> MAPPERS = Set.of(
-            "AchievementMapper", "AppUserMapper", "ChallengeRedemptionMapper", "DiscoveryVersionMapper",
+            "CommunityFoodMapper", "AchievementMapper", "AppUserMapper", "ChallengeRedemptionMapper", "DiscoveryVersionMapper",
             "EtchingDesignMapper", "FavoriteMapper", "FoodCheckinMapper", "FoodCommentMapper",
             "FoodIdempotencyMapper", "FoodLikeMapper", "FoodMapper", "FoodTagMapper", "ImageAssetMapper",
             "ProfileStatsMapper", "RegionMapper", "UserReviewItemMapper", "WishlistMapper");

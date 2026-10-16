@@ -7,7 +7,7 @@ import com.dayan.food.entity.vo.FoodCheckinPageVO;
 import com.dayan.food.entity.vo.FoodCheckinVO;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FoodCheckinMapper;
-import com.dayan.food.mapper.FoodMapper;
+import com.dayan.food.mapper.CommunityFoodMapper;
 import com.dayan.food.mapper.FoodCommentMapper;
 import com.dayan.food.service.FoodCheckinService;
 import com.dayan.food.service.FoodCommentService;
@@ -26,12 +26,12 @@ import java.security.NoSuchAlgorithmException;
 @Service
 public class FoodCheckinServiceImpl implements FoodCheckinService {
     private final FoodCheckinMapper mapper;
-    private final FoodMapper foods;
+    private final CommunityFoodMapper foods;
     private final AppUserMapper users;
     private final FoodCommentService comments;
     private final FoodCommentMapper commentMapper;
 
-    public FoodCheckinServiceImpl(FoodCheckinMapper mapper, FoodMapper foods, AppUserMapper users,
+    public FoodCheckinServiceImpl(FoodCheckinMapper mapper, CommunityFoodMapper foods, AppUserMapper users,
                                   FoodCommentService comments, FoodCommentMapper commentMapper) {
         this.mapper = mapper;
         this.foods = foods;

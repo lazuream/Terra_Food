@@ -8,7 +8,7 @@ import com.dayan.food.entity.vo.WishlistMatchVO;
 import com.dayan.food.entity.vo.WishlistStatusVO;
 import com.dayan.food.entity.vo.WishlistPageVO;
 import com.dayan.food.mapper.AppUserMapper;
-import com.dayan.food.mapper.FoodMapper;
+import com.dayan.food.mapper.CommunityFoodMapper;
 import com.dayan.food.mapper.WishlistMapper;
 import com.dayan.food.service.WishlistService;
 import org.springframework.http.HttpStatus;
@@ -30,17 +30,17 @@ public class WishlistServiceImpl implements WishlistService {
     private static final Set<String> STOP_WORDS =
             Set.of("想吃", "想尝", "尝尝", "一道", "当地", "特色", "菜品", "美食", "的", "菜");
 
-    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.dayan.food.cache.DiscoveryVersion versions;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.dayan.food.cache.CommunityCatalogVersion versions;
     private final java.util.Map<String,MatchEntry> matchCache=new java.util.LinkedHashMap<>(256,0.75f,true);
     private record MatchEntry(long expires,List<WishlistMatchVO> matches){}
     private final WishlistMapper wishlistMapper;
     private final AppUserMapper appUserMapper;
-    private final FoodMapper foodMapper;
+    private final CommunityFoodMapper foodMapper;
 
     public WishlistServiceImpl(
             WishlistMapper wishlistMapper,
             AppUserMapper appUserMapper,
-            FoodMapper foodMapper
+            CommunityFoodMapper foodMapper
     ) {
         this.wishlistMapper = wishlistMapper;
         this.appUserMapper = appUserMapper;

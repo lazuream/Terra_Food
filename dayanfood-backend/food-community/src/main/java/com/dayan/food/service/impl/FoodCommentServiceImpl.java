@@ -8,7 +8,7 @@ import com.dayan.food.entity.vo.FoodCommentVO;
 import com.dayan.food.entity.vo.FoodCommentPageVO;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FoodCommentMapper;
-import com.dayan.food.mapper.FoodMapper;
+import com.dayan.food.mapper.CommunityFoodMapper;
 import com.dayan.food.service.FoodCommentService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,12 +21,12 @@ import java.util.List;
 public class FoodCommentServiceImpl implements FoodCommentService {
 
     private final FoodCommentMapper foodCommentMapper;
-    private final FoodMapper foodMapper;
+    private final CommunityFoodMapper foodMapper;
     private final AppUserMapper appUserMapper;
 
     public FoodCommentServiceImpl(
             FoodCommentMapper foodCommentMapper,
-            FoodMapper foodMapper,
+            CommunityFoodMapper foodMapper,
             AppUserMapper appUserMapper
     ) {
         this.foodCommentMapper = foodCommentMapper;

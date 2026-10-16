@@ -1,13 +1,13 @@
 # 本地运行
 
-当前采用 gateway + user + core + media 四个 Java 进程，以及 Vite 网页。MySQL/Redis 通过独立 Compose 项目 `terra-food-local` 运行，不占用其他项目的默认端口。
+当前采用 gateway + user + core + media + community 五个 Java 进程，以及 Vite 网页。MySQL/Redis 通过独立 Compose 项目 `terra-food-local` 运行，不占用其他项目的默认端口。
 
 | 入口 | 地址 |
 | --- | --- |
 | 网页 | http://localhost:5173 |
 | 注册 | http://localhost:5173/register |
 | API 网关 | http://127.0.0.1:18080/api |
-| 核心 / 图片 / 用户 | 127.0.0.1:18081 / 18082 / 18083 |
+| 核心 / 图片 / 用户 / 社区 | 127.0.0.1:18081 / 18082 / 18083 / 18084 |
 | MySQL / Redis | 127.0.0.1:13306 / 16379 |
 
 ## 启停

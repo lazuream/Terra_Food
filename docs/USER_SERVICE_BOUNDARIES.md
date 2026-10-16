@@ -5,9 +5,10 @@
 ## 运行与模块依赖
 
 - `food-user-boot`（8083）：依赖 `food-user`、`food-achievement`、`food-platform`；持有登录认证提供器。没有菜品、社区、媒体业务实现。
-- `food-core-boot`（8081）：依赖 catalog、community、agent、user-client；不打入 user/achievement 实现。
+- `food-core-boot`（8081）：依赖 catalog、agent、user-client；不打入 user/achievement 实现。
 - `food-media-boot`（8082）：依赖 media、user-client；导出图片仍由核心验证菜品可见性。
-- `food-gateway`（8080）：具体用户路径优先，图片路径其次，其他 `/api/**` 到核心。
+- `food-community-boot`（8084）：依赖 community、user-client，承接社区接口，详见[社区服务边界](COMMUNITY_SERVICE_BOUNDARIES.md)。
+- `food-gateway`（8080）：具体用户、社区、图片路径优先，其他 `/api/**` 到核心。
 - `food-boot`：继续组装全部本地模块，使用本地查询适配器，不调用内部 HTTP，也不要求新增服务令牌。
 
 所有服务继续使用现有 MySQL、Redis Session 命名空间与 `AppUserPrincipal` 类。没有切换 JWT，没有增加注册中心、消息队列或分布式事务。
@@ -22,15 +23,16 @@
 | `/api/achievements/**`、`/api/etchings/**`（含根路径） | 用户 | 选中成就与刻蚀互斥，保留同一事务 |
 | `/api/profile/foods`、`/api/profile/foods/{id}`、`/api/profile/footprints` | 核心 | 从原 ProfileController 移至 ProfileFoodController |
 | `/api/admin/foods`、`/api/admin/foods/{id}/review` | 核心 | 从原 AdminController 移至 AdminFoodController |
-| `/api/users/{id}` | 核心 | 调用用户公开资料接口，再聚合本地已审核菜品 |
-| 收藏、心愿单、评论、点赞、打卡、统计、菜品和地区接口 | 核心 | 原本地事务与 API 保留 |
+| `/api/users/{id}` | 社区 | 调用用户公开资料接口，再聚合本地已审核菜品 |
+| 收藏、心愿单、评论、点赞、打卡、统计 | 社区 | 原本地事务与 API 保留 |
+| 菜品和地区接口 | 核心 | 原本地事务与 API 保留 |
 | `/api/images/**`、`/uploads/**` | 图片 | 原上传、导出、静态文件入口保留 |
 
 不能用整个 `/api/profile/**` 或 `/api/admin/**` 路由到用户服务，这两个前缀跨业务域。
 
 ## 内部契约
 
-契约为 `AccountStatusReader` 与 `PublicUserProfileReader`。兼容启动使用本地实现；核心和媒体使用 `food-user-client` 的 HTTP 实现。
+契约为 `AccountStatusReader` 与 `PublicUserProfileReader`。兼容启动使用本地实现；核心、媒体和社区使用 `food-user-client` 的 HTTP 实现。
 
 | 内部 GET 接口 | 返回字段 | 用途 |
 | --- | --- | --- |
@@ -50,7 +52,7 @@
 | app_user、user_review_item、验证码兑换记录 | 用户 | 注册、密码、角色、停用、删除、资料审核均由用户业务执行 |
 | 成就、用户成就、刻蚀设计 | 用户 | 与账号一起部署，保留成就/刻蚀选择互斥事务 |
 | 菜品、地区、标签、浏览足迹、发现版本、菜品幂等记录 | 核心 | 保留现有查询、写入与权限规则 |
-| 收藏、心愿单、评论、点赞、打卡及其幂等/删除标记 | 核心 | 打卡与关联评论保留原事务 |
+| 收藏、心愿单、评论、点赞、打卡及其幂等/删除标记 | 社区 | 打卡与关联评论保留原事务 |
 | 图片资产与上传文件 | 图片 | 保留归属和引用检查 |
 | Redis Session、限流及验证挑战 | 共享基础设施，用户主导登录生命周期 | Session 的序列化格式和命名空间不变 |
 | 外部记忆删除任务 | 用户登记、既有 Agent 流程消费 | 删除账号时的任务登记与删除继续原子提交 |
@@ -64,9 +66,9 @@
 ## 发布与回退
 
 1. 使用原数据库、Redis 和上传目录；生成并一致配置 `USER_SERVICE_TOKEN`。
-2. 先运行 core，等待现有 Flyway 完成，再启动 user、media、gateway。所有 31 份历史迁移保持原样，仅 core（或兼容模式 boot）执行迁移。
-3. `ops/services/compose.yml` 提供四服务统一部署；新数据库首次部署建议先 `up -d core`，确认迁移完成后再 `up -d`。生产数据库连接、Redis 配置、Session cookie secure 属性在各服务保持一致。邮件与初始管理员环境变量放到 user。
+2. 先运行 core，等待现有 Flyway 完成，再启动 user、media、community、gateway。所有 31 份历史迁移保持原样，仅 core（或兼容模式 boot）执行迁移。
+3. `ops/services/compose.yml` 提供五服务统一部署；新数据库首次部署建议先 `up -d core`，确认迁移完成后再 `up -d`。生产数据库连接、Redis 配置、Session cookie secure 属性在各服务保持一致。邮件与初始管理员环境变量放到 user。
 4. 验证网关登录、跨服务菜品/图片写入、CSRF、账号切换、停用撤销、退出及公开主页。
 5. 回退可停止拆分进程，使用兼容 `target/dayanfood-backend-0.0.1-SNAPSHOT.jar` 接回同一入口。没有本轮新增 schema 或 Session 格式迁移；避免端口冲突和重复启动维护任务。
 
-本轮验证记录见 [用户服务拆分验证](USER_SERVICE_VALIDATION.md)。
+用户服务拆分阶段的验证记录见 [用户服务拆分验证](USER_SERVICE_VALIDATION.md)。

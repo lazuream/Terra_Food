@@ -8,7 +8,7 @@ import com.dayan.food.entity.po.FoodComment;
 import com.dayan.food.entity.po.Region;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FoodCommentMapper;
-import com.dayan.food.mapper.FoodMapper;
+import com.dayan.food.mapper.CommunityFoodMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,7 +33,7 @@ class FoodCommentServiceImplTests extends com.dayan.food.security.ActorTestSuppo
     private FoodCommentMapper foodCommentMapper;
 
     @Mock
-    private FoodMapper foodMapper;
+    private CommunityFoodMapper foodMapper;
 
     @Mock
     private AppUserMapper appUserMapper;

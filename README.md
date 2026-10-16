@@ -167,6 +167,7 @@ Terra_Food/
 │   ├── food-core-boot/     # 核心业务服务启动
 │   ├── food-media-boot/    # 图片服务启动
 │   ├── food-user-boot/     # 用户服务启动
+│   ├── food-community-boot/ # 社区服务启动
 │   ├── food-user-client/   # 用户服务内部查询客户端
 │   ├── food-boot/          # 兼容单体启动与 Flyway 历史
 │   └── food-*/             # 用户、菜品、社区、成就、图片、AI 与共享模块

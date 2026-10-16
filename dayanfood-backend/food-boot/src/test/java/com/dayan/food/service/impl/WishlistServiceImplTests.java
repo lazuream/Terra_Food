@@ -7,7 +7,7 @@ import com.dayan.food.entity.po.Food;
 import com.dayan.food.entity.po.Region;
 import com.dayan.food.entity.vo.WishlistItemVO;
 import com.dayan.food.mapper.AppUserMapper;
-import com.dayan.food.mapper.FoodMapper;
+import com.dayan.food.mapper.CommunityFoodMapper;
 import com.dayan.food.mapper.WishlistMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ class WishlistServiceImplTests {
 
     @Mock private WishlistMapper wishlistMapper;
     @Mock private AppUserMapper appUserMapper;
-    @Mock private FoodMapper foodMapper;
+    @Mock private CommunityFoodMapper foodMapper;
 
     private WishlistServiceImpl service;
 
@@ -97,7 +97,7 @@ class WishlistServiceImplTests {
 
     @Test
     void createDoesNotAcquireSecondConnectionForVersionCache() {
-        var versions=mock(com.dayan.food.cache.DiscoveryVersion.class);
+        var versions=mock(com.dayan.food.cache.CommunityCatalogVersion.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"versions",versions);
         when(wishlistMapper.insertIgnore(org.mockito.ArgumentMatchers.any(WishlistItem.class))).thenReturn(1);
         when(foodMapper.findMatchingCandidates(org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.eq(200))).thenReturn(List.of());

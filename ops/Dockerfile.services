@@ -1,7 +1,7 @@
 FROM maven:3.9.11-eclipse-temurin-21@sha256:6fdc855a6ed81d288ca7ca37ac6ff5e9308b612485c0801d70b25a858c83d237 AS build
 WORKDIR /source
 COPY dayanfood-backend/ ./
-RUN --mount=type=cache,target=/root/.m2 mvn -q -pl food-core-boot,food-media-boot,food-user-boot,food-gateway -am -DskipTests package
+RUN --mount=type=cache,target=/root/.m2 mvn -q -pl food-core-boot,food-media-boot,food-user-boot,food-community-boot,food-gateway -am -DskipTests package
 
 FROM eclipse-temurin:21-jre@sha256:7a65df4b22d2de92d4e04056e884f3b9122d70b21e2847fd66084278bd0ce037 AS runtime
 RUN groupadd --gid 10001 terra && useradd --uid 10001 --gid terra --create-home terra \
@@ -21,3 +21,6 @@ COPY --from=build /source/food-gateway/target/food-gateway-*.jar /app/app.jar
 
 FROM runtime AS user
 COPY --from=build /source/food-user-boot/target/food-user-boot-*.jar /app/app.jar
+
+FROM runtime AS community
+COPY --from=build /source/food-community-boot/target/food-community-boot-*.jar /app/app.jar

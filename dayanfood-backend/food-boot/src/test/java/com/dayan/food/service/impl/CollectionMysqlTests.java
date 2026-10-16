@@ -5,7 +5,7 @@ import com.dayan.food.mapper.AchievementMapper;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.EtchingDesignMapper;
 import com.dayan.food.mapper.FavoriteMapper;
-import com.dayan.food.mapper.FoodMapper;
+import com.dayan.food.mapper.CommunityFoodMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
@@ -57,7 +57,7 @@ class CollectionMysqlTests {
                 }
                 statement.executeUpdate("INSERT INTO app_user (id,username,password,display_name,role,active,subject_id) VALUES (1,'flow-test','unused','Test','USER',TRUE,'temporary-flow-subject'),(2,'other-test','unused','Other','USER',TRUE,'temporary-other-subject')");
                 statement.executeUpdate("INSERT INTO region (id,name,province) VALUES (1,'Test','Test')");
-                statement.executeUpdate("INSERT INTO food (id,name,region_id,summary,story,ingredients,created_by,review_status) VALUES (1,'Test dish',1,'Test','Test','Test','flow-test','APPROVED')");
+                statement.executeUpdate("INSERT INTO food (id,name,region_id,summary,story,ingredients,created_by,created_by_user_id,ownership_status,review_status) VALUES (1,'Test dish',1,'Test','Test','Test','flow-test',1,'VERIFIED','APPROVED'),(2,'Pending',1,'Test','Test','Test','flow-test',1,'VERIFIED','PENDING')");
             }
             var factory = new SqlSessionFactoryBean();
             factory.setDataSource(new SingleConnectionDataSource(connection, true));
@@ -66,10 +66,21 @@ class CollectionMysqlTests {
             factory.setConfiguration(configuration);
             factory.setMapperLocations(new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/*.xml"));
             try (var session = factory.getObject().openSession()) {
+                var catalog = session.getMapper(com.dayan.food.mapper.FoodMapper.class);
+                var projection = session.getMapper(CommunityFoodMapper.class);
+                var json = new ObjectMapper().findAndRegisterModules();
+                assertEquals(json.valueToTree(catalog.findById(1L)), json.valueToTree(projection.findById(1L)));
+                assertEquals(json.valueToTree(catalog.findById(2L)), json.valueToTree(projection.findById(2L)));
+                assertEquals(json.valueToTree(catalog.findApprovedByIds(java.util.List.of(1L, 2L))),
+                        json.valueToTree(projection.findApprovedByIds(java.util.List.of(1L, 2L))));
+                assertEquals(json.valueToTree(catalog.findApprovedByCreatedBy(1L, 100)),
+                        json.valueToTree(projection.findApprovedByCreatedBy(1L, 100)));
+                assertEquals(json.valueToTree(catalog.findMatchingCandidates(java.util.List.of("Test"), 200)),
+                        json.valueToTree(projection.findMatchingCandidates(java.util.List.of("Test"), 200)));
                 var users = session.getMapper(AppUserMapper.class);
                 com.dayan.food.support.TestActors.use(users.findById(1L));
                 var favorites = new FavoriteServiceImpl(session.getMapper(FavoriteMapper.class),
-                        session.getMapper(FoodMapper.class), users);
+                        session.getMapper(CommunityFoodMapper.class), users);
                 assertFalse(favorites.status(1L, "flow-test").favorited());
                 assertTrue(favorites.add(1L, "flow-test").favorited());
                 assertTrue(favorites.add(1L, "flow-test").favorited());

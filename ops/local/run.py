@@ -36,7 +36,7 @@ if not node or not java:
     raise RuntimeError("Java 21 and Node 22.14+ are required")
 required = [ROOT / "web/node_modules/vite/bin/vite.js"] + [
     ROOT / "dayanfood-backend" / module / "target" / (module + "-0.0.1-SNAPSHOT.jar")
-    for module in ("food-core-boot", "food-user-boot", "food-media-boot", "food-gateway")]
+    for module in ("food-core-boot", "food-user-boot", "food-media-boot", "food-community-boot", "food-gateway")]
 missing = [str(path) for path in required if not path.exists()]
 if missing:
     raise RuntimeError("Build backend JARs and install web dependencies first: " + ", ".join(missing))
@@ -48,7 +48,7 @@ for executable in required[1:]:
                 candidates = list((ROOT / "dayanfood-backend").glob("*/target/" + Path(name).name))
                 if candidates and hashlib.sha256(archive.read(name)).digest() != hashlib.sha256(candidates[0].read_bytes()).digest():
                     raise RuntimeError("Stale nested dependency in " + executable.name + "; run mvn clean package first")
-for port in (18080, 18081, 18082, 18083, 5173):
+for port in (18080, 18081, 18082, 18083, 18084, 5173):
     with socket.socket() as probe:
         if probe.connect_ex(("127.0.0.1", port)) == 0:
             raise RuntimeError(f"Port {port} is already in use; do not start a second local stack")
@@ -61,6 +61,7 @@ base_env = {**os.environ,
     "SPRING_PROFILES_ACTIVE": "local", "SESSION_COOKIE_SECURE": "false", "SERVER_ADDRESS": "127.0.0.1",
     "USER_SERVICE_URL": "http://127.0.0.1:18083", "USER_SERVICE_TOKEN": config["USER_SERVICE_TOKEN"],
     "CORE_SERVICE_URL": "http://127.0.0.1:18081", "MEDIA_SERVICE_URL": "http://127.0.0.1:18082",
+    "COMMUNITY_SERVICE_URL": "http://127.0.0.1:18084",
     "CORS_ALLOWED_ORIGINS": "http://localhost:5173,http://127.0.0.1:5173",
     "UPLOAD_DIRECTORY": str(ROOT / "dayanfood-backend/uploads"),
 }
@@ -97,14 +98,14 @@ def start(name, args, environment, url, cwd=ROOT):
 
 try:
     save()
-    for name, port in [("food-core-boot", 18081), ("food-user-boot", 18083), ("food-media-boot", 18082), ("food-gateway", 18080)]:
+    for name, port in [("food-core-boot", 18081), ("food-user-boot", 18083), ("food-media-boot", 18082), ("food-community-boot", 18084), ("food-gateway", 18080)]:
         env = {**base_env}
         env["GATEWAY_PORT" if name == "food-gateway" else "SERVER_PORT"] = str(port)
         if name == "food-user-boot":
             env.update(REGISTRATION_EMAIL_VERIFICATION_ENABLED="false", INITIAL_ADMIN_ENABLED="true",
                 INITIAL_ADMIN_USERNAME="local_admin", INITIAL_ADMIN_PASSWORD=config["INITIAL_ADMIN_PASSWORD"])
         jar = ROOT / "dayanfood-backend" / name / "target" / (name + "-0.0.1-SNAPSHOT.jar")
-        path = "/api/auth/csrf" if name == "food-user-boot" else "/api/regions"
+        path = "/api/auth/csrf" if name == "food-user-boot" else ("/api/profile/stats" if name == "food-community-boot" else "/api/regions")
         start(name, [java, "-jar", str(jar)], env, f"http://127.0.0.1:{port}{path}")
     start("web", [node, str(ROOT / "web/node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", "5173", "--strictPort"],
         base_env, "http://127.0.0.1:5173", ROOT / "web")

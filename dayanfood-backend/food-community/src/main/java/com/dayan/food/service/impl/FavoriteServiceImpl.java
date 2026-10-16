@@ -9,7 +9,7 @@ import com.dayan.food.entity.vo.FoodVO;
 import com.dayan.food.entity.vo.FoodCatalogVO;
 import com.dayan.food.mapper.AppUserMapper;
 import com.dayan.food.mapper.FavoriteMapper;
-import com.dayan.food.mapper.FoodMapper;
+import com.dayan.food.mapper.CommunityFoodMapper;
 import com.dayan.food.service.FavoriteService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,10 +21,10 @@ import java.util.List;
 @Service
 public class FavoriteServiceImpl implements FavoriteService {
     private final FavoriteMapper favoriteMapper;
-    private final FoodMapper foodMapper;
+    private final CommunityFoodMapper foodMapper;
     private final AppUserMapper appUserMapper;
 
-    public FavoriteServiceImpl(FavoriteMapper favoriteMapper, FoodMapper foodMapper, AppUserMapper appUserMapper) {
+    public FavoriteServiceImpl(FavoriteMapper favoriteMapper, CommunityFoodMapper foodMapper, AppUserMapper appUserMapper) {
         this.favoriteMapper = favoriteMapper;
         this.foodMapper = foodMapper;
         this.appUserMapper = appUserMapper;

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.dayan.food.mapper.CommunityFoodMapper">
+    <!-- Transitional shared-schema read projection. No catalog writes are exposed here.
+         Keep these fields and visibility rules aligned with FoodMapper until an event projection replaces it. -->
+    <resultMap id="foodResultMap" type="com.dayan.food.entity.po.Food">
+        <id property="id" column="food_id"/>
+        <result property="name" column="food_name"/>
+        <result property="latitude" column="latitude"/>
+        <result property="longitude" column="longitude"/>
+        <result property="address" column="address"/>
+        <result property="summary" column="summary"/>
+        <result property="story" column="story"/>
+        <result property="ingredients" column="ingredients"/>
+        <result property="imageUrl" column="image_url"/>
+        <result property="imageSmallUrl" column="image_small_url"/>
+        <result property="imageMediumUrl" column="image_medium_url"/>
+        <result property="imageLargeUrl" column="image_large_url"/>
+        <result property="remark" column="remark"/>
+        <result property="heat" column="heat"/>
+        <result property="reviewStatus" column="review_status" javaType="com.dayan.food.entity.enums.FoodReviewStatus"/>
+        <result property="contentVersion" column="content_version"/>
+        <result property="reviewedBy" column="reviewed_by"/>
+        <result property="reviewedAt" column="reviewed_at"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createdByUserId" column="created_by_user_id"/>
+        <result property="ownershipStatus" column="ownership_status"/>
+        <result property="createdAt" column="created_at"/>
+        <association property="region" javaType="com.dayan.food.entity.po.Region">
+            <id property="id" column="region_id"/>
+            <result property="name" column="region_name"/>
+            <result property="province" column="region_province"/>
+            <result property="description" column="region_description"/>
+        </association>
+    </resultMap>
+
+    <sql id="foodColumns">
+        f.id AS food_id,
+        f.name AS food_name,
+        f.latitude,
+        f.longitude,
+        f.address,
+        f.summary,
+        f.story,
+        f.ingredients,
+        f.image_url,
+        (SELECT ia.variant_320_url FROM image_asset ia WHERE ia.original_url=f.image_url AND ia.status='READY') AS image_small_url,
+        (SELECT ia.variant_640_url FROM image_asset ia WHERE ia.original_url=f.image_url AND ia.status='READY') AS image_medium_url,
+        (SELECT ia.variant_1280_url FROM image_asset ia WHERE ia.original_url=f.image_url AND ia.status='READY') AS image_large_url,
+        f.remark,
+        f.heat,
+        f.review_status,
+        f.content_version,
+        f.reviewed_by,
+        f.reviewed_at,
+        f.created_by,
+        f.created_by_user_id,
+        f.ownership_status,
+        f.created_at,
+        r.id AS region_id,
+        COALESCE(NULLIF(f.city, ''), r.name) AS region_name,
+        COALESCE(NULLIF(f.province, ''), r.province) AS region_province,
+        r.description AS region_description
+    </sql>
+
+    <select id="findById" resultMap="foodResultMap">
+        SELECT <include refid="foodColumns"/>
+        FROM food f
+        LEFT JOIN region r ON r.id = f.region_id
+        WHERE f.id = #{id}
+          AND f.review_status = 'APPROVED'
+    </select>
+
+    <select id="findApprovedByIds" resultMap="foodResultMap">
+        SELECT <include refid="foodColumns"/> FROM food f LEFT JOIN region r ON r.id=f.region_id
+        WHERE f.review_status='APPROVED' AND f.id IN <foreach collection="ids" item="id" open="(" close=")" separator=",">#{id}</foreach>
+    </select>
+
+    <select id="findApprovedByCreatedBy" resultMap="foodResultMap">
+        SELECT <include refid="foodColumns"/>
+        FROM food f
+        LEFT JOIN region r ON r.id = f.region_id
+        WHERE f.review_status = 'APPROVED'
+          AND f.created_by_user_id = #{userId} AND f.ownership_status='VERIFIED'
+        ORDER BY f.heat DESC, f.id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="findMatchingCandidates" resultMap="foodResultMap">
+        SELECT f.id AS food_id,f.name AS food_name,f.latitude,f.longitude,f.image_url,f.heat,f.review_status,
+          f.created_by,f.created_by_user_id,f.created_at,f.ingredients,LEFT(f.summary,240) AS summary,
+          r.id AS region_id,COALESCE(NULLIF(f.city,''),r.name) AS region_name,
+          COALESCE(NULLIF(f.province,''),r.province) AS region_province
+        FROM food f
+        LEFT JOIN region r ON r.id = f.region_id
+        WHERE f.review_status = 'APPROVED'
+        <if test="tokens != null and !tokens.isEmpty()">
+            AND <foreach collection="tokens" item="token" open="(" close=")" separator=" OR ">
+                INSTR(LOWER(f.name), LOWER(#{token})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.ingredients, '')), LOWER(#{token})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.city, '')), LOWER(#{token})) &gt; 0
+                OR INSTR(LOWER(COALESCE(f.province, '')), LOWER(#{token})) &gt; 0
+            </foreach>
+        </if>
+        <if test="tokens == null or tokens.isEmpty()">AND 1=0</if>
+        ORDER BY f.heat DESC, f.id DESC
+        LIMIT #{limit}
+    </select>
+    <select id="currentDiscoveryVersion" resultType="long">
+        SELECT version FROM public_discovery_version WHERE id=1
+    </select>
+</mapper>

@@ -5,7 +5,7 @@ import com.dayan.food.entity.po.AppUser;
 import com.dayan.food.entity.po.Food;
 import com.dayan.food.entity.vo.UserPublicVO;
 import com.dayan.food.mapper.AppUserMapper;
-import com.dayan.food.mapper.FoodMapper;
+import com.dayan.food.mapper.CommunityFoodMapper;
 import com.dayan.food.mapper.AchievementMapper;
 import com.dayan.food.service.EtchingDesignService;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,7 +31,7 @@ class UserPublicServiceImplTests {
     private AppUserMapper appUserMapper;
 
     @Mock
-    private FoodMapper foodMapper;
+    private CommunityFoodMapper foodMapper;
     @Mock
     private AchievementMapper achievementMapper;
     @Mock

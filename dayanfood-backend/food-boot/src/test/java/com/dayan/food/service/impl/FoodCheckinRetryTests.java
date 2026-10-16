@@ -14,7 +14,7 @@ import java.time.LocalDate;
 class FoodCheckinRetryTests {
  final FoodCheckinMapper checkins=mock(FoodCheckinMapper.class);
  final AppUserMapper users=mock(AppUserMapper.class);
- final FoodMapper foods=mock(FoodMapper.class);
+ final CommunityFoodMapper foods=mock(CommunityFoodMapper.class);
  final FoodCommentMapper commentMapper=mock(FoodCommentMapper.class);
  final FoodCommentService comments=mock(FoodCommentService.class);
  final FoodCheckinServiceImpl service=new FoodCheckinServiceImpl(checkins,foods,users,comments,commentMapper);

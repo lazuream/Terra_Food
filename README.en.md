@@ -167,6 +167,7 @@ Terra_Food/
 │   ├── food-core-boot/     # Core service entry point
 │   ├── food-media-boot/    # Media service entry point
 │   ├── food-user-boot/     # User service entry point
+│   ├── food-community-boot/ # Community service entry point
 │   ├── food-user-client/   # Internal user-service query client
 │   ├── food-boot/          # Compatible unified entry point and migrations
 │   └── food-*/             # User, catalog, community, achievement, media, Agent and common

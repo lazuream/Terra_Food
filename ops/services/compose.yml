@@ -44,6 +44,20 @@ services:
       core:
         condition: service_started
     restart: unless-stopped
+  community:
+    build:
+      context: ../..
+      dockerfile: ops/Dockerfile.services
+      target: community
+    environment:
+      <<: *backend-env
+      SERVER_PORT: 8084
+    depends_on:
+      core:
+        condition: service_started
+      user:
+        condition: service_started
+    restart: unless-stopped
   media:
     build:
       context: ../..
@@ -70,12 +84,14 @@ services:
       CORE_SERVICE_URL: http://core:8081
       MEDIA_SERVICE_URL: http://media:8082
       USER_SERVICE_URL: http://user:8083
+      COMMUNITY_SERVICE_URL: http://community:8084
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
     depends_on:
       - core
       - media
       - user
+      - community
     restart: unless-stopped
 networks:
   default:

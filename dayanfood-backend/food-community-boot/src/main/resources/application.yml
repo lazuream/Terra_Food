@@ -1,0 +1,21 @@
+spring:
+  config:
+    import: classpath:backend-defaults.yml
+---
+spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+  application:
+    name: food-community
+  flyway:
+    enabled: false
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8084}
+app:
+  user-service:
+    remote: true
+    url: ${USER_SERVICE_URL:http://127.0.0.1:8083}
+    token: ${USER_SERVICE_TOKEN}
+  media:
+    serve-uploads: false

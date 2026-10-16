@@ -32,6 +32,7 @@
         <module>food-gateway</module>
         <module>food-user-client</module>
         <module>food-user-boot</module>
+        <module>food-community-boot</module>
     </modules>
 
     <properties>
