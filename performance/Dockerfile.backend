@@ -1,8 +1,7 @@
 FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /source
-COPY dayanfood-backend/pom.xml .
-COPY dayanfood-backend/src ./src
-RUN --mount=type=cache,target=/root/.m2 mvn -q -DskipTests package
+COPY dayanfood-backend/ ./
+RUN --mount=type=cache,target=/root/.m2 mvn -q -pl food-boot -am -DskipTests package
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

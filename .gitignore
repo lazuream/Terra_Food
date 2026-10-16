@@ -10,6 +10,8 @@ application-local.yml
 uploads/
 .m2/
 *.log
+unpackage/
+project.private.config.json
 performance/.env
 performance/results/
 __pycache__/

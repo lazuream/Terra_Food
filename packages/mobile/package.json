@@ -1,0 +1,15 @@
+{
+  "name": "@terra/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*.vue": "./src/*.vue",
+    "./*.css": "./src/*.css",
+    "./*": "./src/*.ts"
+  },
+  "peerDependencies": {
+    "vue": "3.4.21",
+    "@dcloudio/uni-app": "3.0.0-5020420260813003"
+  }
+}

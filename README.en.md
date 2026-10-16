@@ -157,9 +157,17 @@ Administrators and sub-administrators can maintain community content through the
 
 ```text
 Terra_Food/
+├── app/                    # Android / iOS App
+├── miniprogram/            # WeChat mini program
+├── packages/mobile/        # Shared mobile UI and API client
 ├── web/                    # Vue website and static assets
-├── dayanfood-backend/       # Java business backend
-│   └── src/main/resources/db/migration/  # Flyway migrations and seed data
+├── dayanfood-backend/       # Maven modules with unified or gateway/core/media deployment
+│   ├── food-platform/      # Shared authentication and infrastructure
+│   ├── food-gateway/       # Independent Gateway
+│   ├── food-core-boot/     # Core service entry point
+│   ├── food-media-boot/    # Media service entry point
+│   ├── food-boot/          # Compatible unified entry point and migrations
+│   └── food-*/             # User, catalog, community, achievement, media, Agent and common
 ├── agent-service/          # Optional AI API and MCP service
 ├── .github/workflows/      # CI workflows
 ├── docker-compose.yml      # Local dependencies and optional Agent containers
@@ -171,6 +179,11 @@ Terra_Food/
 Project code is released under the [MIT License](LICENSE). Check the sources and permissions for music, images, and other third-party assets separately; the code license alone does not grant unrestricted rights to redistribute those assets. See the [background music guide](web/public/audio/README.md) for playlist maintenance (in Chinese).
 
 ---
+
+
+## App, WeChat mini program and services
+
+Separate `app/` and `miniprogram/` projects share `packages/mobile/`, outside the existing `web/`. No H5 target is added. See [mobile client setup](docs/mobile-clients.md) and [backend service setup](dayanfood-backend/README.md). The backend supports the existing unified JAR and a gateway/core/media deployment.
 
 <a id="development"></a>
 
@@ -238,14 +251,15 @@ $env:INITIAL_ADMIN_ENABLED = "true"
 $env:INITIAL_ADMIN_PASSWORD = "<your own strong administrator password>"
 
 cd dayanfood-backend
-mvn spring-boot:run
+mvn -DskipTests package
+java -jar target/dayanfood-backend-0.0.1-SNAPSHOT.jar
 ```
 
 The backend defaults to `http://localhost:8080`. Select the administrator role on the login page, use username `admin`, and enter the password above. An existing account with that username is neither recreated nor given a new password by this configuration.
 
 After the initial account is created, set `INITIAL_ADMIN_ENABLED` to `false` and remove `INITIAL_ADMIN_PASSWORD` before the next startup. This account lets you explore the local dashboard; testing regular-user registration and review workflows still requires a regular account.
 
-> Compose reads the root `.env`; **it does not automatically become the environment for `mvn spring-boot:run`**. Set Java variables in the same terminal that starts Java, or in your IDE's run configuration. Configure them again when opening a new terminal.
+> Compose reads the root `.env`; **it does not automatically become the environment for `java -jar`**. Set Java variables in the same terminal that starts Java, or in your IDE's run configuration. Configure them again when opening a new terminal.
 
 **3. Start the Vue frontend (another terminal, starting at the repository root)**
 
@@ -355,7 +369,7 @@ Invoke-RestMethod http://127.0.0.1:8090/health
 
 ### Configuration and troubleshooting
 
-See [application.yml](dayanfood-backend/src/main/resources/application.yml) for backend settings and [agent-service/README.md](agent-service/README.md) for the additional Agent notes (in Chinese).
+See the [backend module guide](dayanfood-backend/README.md) for module ownership and development startup, [backend-defaults.yml](dayanfood-backend/food-platform/src/main/resources/backend-defaults.yml) for backend settings, and [agent-service/README.md](agent-service/README.md) for the additional Agent notes (guides in Chinese).
 
 | Symptom | Check first |
 | --- | --- |

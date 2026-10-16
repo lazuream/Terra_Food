@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: food-gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 60s
+          x-forwarded:
+            enabled: false
+server:
+  port: ${GATEWAY_PORT:8080}
+app:
+  routes:
+    core: ${CORE_SERVICE_URL:http://127.0.0.1:8081}
+    media: ${MEDIA_SERVICE_URL:http://127.0.0.1:8082}

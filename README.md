@@ -157,9 +157,17 @@ Terra Food 是面向《明日方舟》玩家与地方美食爱好者的地图式
 
 ```text
 Terra_Food/
+├── app/                    # Android / iOS App
+├── miniprogram/            # 微信小程序
+├── packages/mobile/        # 两端共享页面、API 与会话逻辑
 ├── web/                    # Vue 网站与静态资源
-├── dayanfood-backend/       # Java 业务后端
-│   └── src/main/resources/db/migration/  # Flyway 迁移与初始数据
+├── dayanfood-backend/       # Maven 多模块后端，可单体或 Gateway + 核心 + 图片服务部署
+│   ├── food-platform/      # 公共鉴权、Web 配置与账号 Mapper
+│   ├── food-gateway/       # 独立 Gateway 入口
+│   ├── food-core-boot/     # 核心业务服务启动
+│   ├── food-media-boot/    # 图片服务启动
+│   ├── food-boot/          # 兼容单体启动与 Flyway 历史
+│   └── food-*/             # 用户、菜品、社区、成就、图片、AI 与共享模块
 ├── agent-service/          # 可选 AI API 与 MCP 服务
 ├── .github/workflows/      # CI 工作流
 ├── docker-compose.yml      # 本地依赖及可选 Agent 容器
@@ -171,6 +179,11 @@ Terra_Food/
 项目代码使用 [MIT License](LICENSE)。音乐、图片及其他第三方素材应分别核对来源和授权，不能仅凭项目代码许可证判断可任意分发。播放列表维护见[背景音乐说明](web/public/audio/README.md)。
 
 ---
+
+
+## App、微信小程序与服务拆分
+
+新增 `app/` 和 `miniprogram/` 独立工程，共享 `packages/mobile/`，不新增 H5 工程。详情见 [移动端说明](docs/mobile-clients.md)。后端支持兼容单体启动，或 Gateway + 核心 + 图片服务部署，见 [后端说明](dayanfood-backend/README.md)。
 
 <a id="development"></a>
 
@@ -238,14 +251,15 @@ $env:INITIAL_ADMIN_ENABLED = "true"
 $env:INITIAL_ADMIN_PASSWORD = "<自行设置的强管理员密码>"
 
 cd dayanfood-backend
-mvn spring-boot:run
+mvn -DskipTests package
+java -jar target/dayanfood-backend-0.0.1-SNAPSHOT.jar
 ```
 
 后端默认地址为 `http://localhost:8080`。在网站登录页选择管理员身份，用户名为 `admin`，密码为上面设置的值。已有同名账号不会重复创建或被此配置重置密码。
 
 首次创建成功后，在下次启动前将 `INITIAL_ADMIN_ENABLED` 改为 `false`，并移除 `INITIAL_ADMIN_PASSWORD`。初始化管理员适合本地进入后台；验证普通用户注册和审核流程仍需普通用户账号。
 
-> 根目录 `.env` 由 Compose 读取，**不会自动成为 `mvn spring-boot:run` 的环境变量**。Java 需要的变量应在启动它的同一终端或 IDE 运行配置中设置；新开终端需要重新配置。
+> 根目录 `.env` 由 Compose 读取，**不会自动成为 `java -jar` 的环境变量**。Java 需要的变量应在启动它的同一终端或 IDE 运行配置中设置；新开终端需要重新配置。
 
 **3. 启动 Vue 前端（另一个终端，从仓库根目录开始）**
 
@@ -369,7 +383,7 @@ Invoke-RestMethod http://127.0.0.1:8090/health
 
 ### 常用配置与排查
 
-完整后端配置见 [application.yml](dayanfood-backend/src/main/resources/application.yml)，Agent 说明见 [agent-service/README.md](agent-service/README.md)。
+模块职责与开发启动方式见 [后端说明](dayanfood-backend/README.md)。完整后端配置见 [backend-defaults.yml](dayanfood-backend/food-platform/src/main/resources/backend-defaults.yml)，Agent 说明见 [agent-service/README.md](agent-service/README.md)。
 
 | 情况 | 优先检查 |
 | --- | --- |

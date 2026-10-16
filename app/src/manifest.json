@@ -1,0 +1,31 @@
+{
+  "name": "大炎珍馐志",
+  "appid": "",
+  "description": "寻味山河，记录人间烟火",
+  "versionName": "0.1.0",
+  "versionCode": "10",
+  "transformPx": false,
+  "vueVersion": "3",
+  "app-plus": {
+    "usingComponents": true,
+    "splashscreen": {
+      "alwaysShowBeforeRender": true,
+      "waiting": true,
+      "autoclose": true,
+      "delay": 0
+    },
+    "distribute": {
+      "android": {
+        "permissions": []
+      },
+      "ios": {}
+    }
+  },
+  "mp-weixin": {
+    "appid": "",
+    "setting": {
+      "urlCheck": true
+    },
+    "usingComponents": true
+  }
+}

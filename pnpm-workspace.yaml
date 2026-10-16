@@ -1,0 +1,8 @@
+packages:
+  - app
+  - miniprogram
+  - packages/mobile
+allowBuilds:
+  esbuild: true
+  core-js: false
+  core-js-pure: false

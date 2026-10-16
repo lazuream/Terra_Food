@@ -9,6 +9,11 @@ agent-service
 **/node_modules
 **/dist
 **/target
+**/.env
+**/.env.local
+dayanfood-backend/**/uploads
+dayanfood-backend/**/application-local.yml
+dayanfood-backend/**/.env*
 **/*.log
 performance/.env
 performance/results

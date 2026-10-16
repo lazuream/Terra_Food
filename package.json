@@ -1,0 +1,14 @@
+{
+  "name": "terra-food-mobile-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "build:app": "pnpm --filter @terra/app build",
+    "build:mini": "pnpm --filter @terra/miniprogram build",
+    "typecheck": "pnpm --filter @terra/app typecheck && pnpm --filter @terra/miniprogram typecheck",
+    "test:mobile": "node --experimental-strip-types --test packages/mobile/tests/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22.14"
+  }
+}
