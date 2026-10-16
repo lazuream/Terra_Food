@@ -479,6 +479,7 @@ export default {
     actions: 'Sign-in actions',
   },
   register: {
+    localVerificationDisabled: 'Local development: email verification is temporarily disabled. You can register directly.',
     eyebrow: 'A NEW JOURNEY',
     artTitle: 'Begin with a flavor, discover the land',
     quote: 'Every record helps a regional flavor reach more people.',

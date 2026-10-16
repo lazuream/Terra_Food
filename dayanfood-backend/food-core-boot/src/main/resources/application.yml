@@ -3,6 +3,8 @@ spring:
     import: classpath:backend-defaults.yml
 ---
 spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   application:
     name: food-core
   flyway:
@@ -11,6 +13,10 @@ server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: ${SERVER_PORT:8081}
 app:
+  user-service:
+    remote: true
+    url: ${USER_SERVICE_URL:http://127.0.0.1:8083}
+    token: ${USER_SERVICE_TOKEN}
   media:
     serve-uploads: false
     core-url: ${CORE_SERVICE_URL:http://127.0.0.1:8081}

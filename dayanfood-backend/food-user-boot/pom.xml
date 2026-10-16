@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion>
+<parent><groupId>com.dayan</groupId><artifactId>dayanfood-backend</artifactId><version>0.0.1-SNAPSHOT</version></parent>
+<artifactId>food-user-boot</artifactId><dependencies><dependency><groupId>com.dayan</groupId><artifactId>food-user</artifactId></dependency><dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency></dependencies><build><plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId><configuration><mainClass>com.dayan.user.UserApplication</mainClass></configuration></plugin><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-failsafe-plugin</artifactId>
+<configuration><systemPropertyVariables><packaged.application>${project.build.directory}/${project.build.finalName}.jar</packaged.application></systemPropertyVariables></configuration>
+<executions><execution><goals><goal>integration-test</goal><goal>verify</goal></goals></execution></executions></plugin></plugins></build></project>

@@ -33,6 +33,7 @@ public class EdgeBoundaryFilter implements GlobalFilter, Ordered {
             headers.remove("X-User-Id");
             headers.remove("X-User-Role");
             headers.remove("X-MCP-Backend-Token");
+            headers.remove("X-User-Service-Token");
             if (exchange.getRequest().getRemoteAddress() != null)
                 headers.set("X-Forwarded-For", exchange.getRequest().getRemoteAddress().getAddress().getHostAddress());
         }).build();

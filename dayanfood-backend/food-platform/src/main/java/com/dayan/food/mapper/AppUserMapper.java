@@ -19,6 +19,8 @@ public interface AppUserMapper {
 
     AppUser findById(Long id);
 
+    com.dayan.food.entity.vo.AccountStatusVO findAccountStatus(Long id);
+
     AppUser findByIdForUpdate(@Param("id") Long id);
 
     int updateAvatarById(@Param("id") Long id, @Param("avatarUrl") String avatarUrl);

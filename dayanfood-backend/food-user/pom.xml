@@ -13,7 +13,7 @@
 
     <artifactId>food-user</artifactId>
 
-    <dependencies>
+    <dependencies><dependency><groupId>com.dayan</groupId><artifactId>food-achievement</artifactId></dependency>
         <dependency>
             <groupId>com.dayan</groupId>
             <artifactId>food-platform</artifactId>

@@ -6,10 +6,13 @@
 | --- | --- | --- |
 | `food-boot` | `DayanFoodApplication` / 8080 | 兼容模式：全部业务在一个 JVM，仍可统一启动部署 |
 | `food-gateway` | `GatewayApplication` / 8080 | Spring Cloud Gateway WebFlux，外部统一入口 |
-| `food-core-boot` | `CoreApplication` / 8081 | 用户、菜品、社区、成就与 Java Agent 业务 |
+| `food-core-boot` | `CoreApplication` / 8081 | 菜品、社区与 Java Agent 业务 |
+| `food-user-boot` | `UserApplication` / 8083 | 登录、账号、资料审核、成就与刻蚀 |
 | `food-media-boot` | `MediaApplication` / 8082 | 独立图片上传、资产记录、导出与文件服务 |
 
-拆分模式是 **网关 + 核心服务 + 图片服务**，并非所有业务都已成为独立微服务。用户、菜品、收藏和成就保留本地事务；核心与图片服务现阶段共享 MySQL 库与 Redis Session。尚未实现按服务独立数据库、注册中心或分布式事务。
+拆分模式是 **网关 + 用户服务 + 核心服务 + 图片服务**。用户服务独立运行，核心和媒体通过内部接口查询账号状态，原有登录、Cookie、CSRF 和 API URL 保持不变。当前共享 MySQL 与 Redis Session，写入时的用户行锁、跨域外键仍保留；尚未实现按服务拆库。
+
+接口归属、数据所有权和保留的跨域依赖见 [用户服务边界说明](../docs/USER_SERVICE_BOUNDARIES.md)。
 
 ## 模块
 
@@ -24,7 +27,8 @@
 | `food-media` | 图片存储、资产 Mapper、隔离解码、导出与维护任务；仅依赖 common/platform |
 | `food-agent` | Java 侧 AI 接口与内部 Agent 接口；Python 工程仍为根目录 `agent-service` |
 | `food-boot` | 兼容启动、历史迁移 SQL、原有集成测试及组装测试 |
-| `food-core-boot` / `food-media-boot` / `food-gateway` | 三个独立可执行 JAR |
+| `food-user-client` | 内部账号状态和公开资料 HTTP 适配器，不包含用户业务实现 |
+| `food-core-boot` / `food-media-boot` / `food-user-boot` / `food-gateway` | 四个独立可执行 JAR |
 
 图片服务的 JAR 不包含 user/catalog/community/achievement 的业务实现。图片导出通过 `FoodImageLookup` 调用核心 `/api/foods/{id}?recordVisit=false`，转发调用者的 Session Cookie，让核心执行原有菜品可见性检查；不是直接信任客户端用户 ID。兼容模式使用本地适配器，避免内部 HTTP。
 
@@ -43,15 +47,16 @@ java -jar target/dayanfood-backend-0.0.1-SNAPSHOT.jar
 
 ## 拆分启动
 
-先配置已有 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`。按顺序在三个终端启动：
+先配置已有 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD`。另外设置随机的 `USER_SERVICE_TOKEN`（至少 32 字符，三个业务服务相同）。先启动 core 并等待 Flyway 完成，再在四个终端运行：
 
 ```sh
 java -jar food-core-boot/target/food-core-boot-0.0.1-SNAPSHOT.jar
+java -jar food-user-boot/target/food-user-boot-0.0.1-SNAPSHOT.jar
 java -jar food-media-boot/target/food-media-boot-0.0.1-SNAPSHOT.jar
 java -jar food-gateway/target/food-gateway-0.0.1-SNAPSHOT.jar
 ```
 
-不要同时在 8080 启动兼容应用和 Gateway。核心与图片默认只监听 127.0.0.1；跨容器使用 `SERVER_ADDRESS=0.0.0.0`，并用网络隔离限制直连。`SERVER_PORT` 分别设置业务服务端口，`GATEWAY_PORT` 设置网关端口。图片服务与网关的 `CORE_SERVICE_URL` 默认 `http://127.0.0.1:8081`，网关 `MEDIA_SERVICE_URL` 默认 `http://127.0.0.1:8082`。
+不要同时在 8080 启动兼容应用和 Gateway。核心、用户与图片默认只监听 127.0.0.1；跨容器使用 `SERVER_ADDRESS=0.0.0.0`，并用网络隔离限制直连。`SERVER_PORT` 分别设置业务服务端口，`GATEWAY_PORT` 设置网关端口。图片服务与网关的 `CORE_SERVICE_URL` 默认 `http://127.0.0.1:8081`，网关 `MEDIA_SERVICE_URL` 默认 `http://127.0.0.1:8082`。核心、图片和网关使用 `USER_SERVICE_URL`，默认 `http://127.0.0.1:8083`。邮件和初始管理员配置属于用户服务。
 
 `UPLOAD_DIRECTORY` 必须指向原有上传文件的绝对目录，仅媒体服务负责 `/uploads/**`。原目录不自动迁移，不要把服务拆分误当作更换空上传目录。
 
@@ -70,19 +75,22 @@ docker compose --env-file ops/services/.env -f ops/services/compose.yml up -d --
 web / App / 微信小程序
            │
       Gateway :8080
+           ├─ 登录、账号、个人资料、成就 → user :8083
            ├─ /api/images/**、/uploads/** → media :8082
            └─ 其他 /api/**               → core :8081
+core / media → user 内部账号状态查询
+core 公开主页 → user 公开资料查询 + core 菜品聚合
 media 图片导出 → core 菜品可见性查询
 ```
 
 网关不改写 API 路径，不自动重试写请求；Session Cookie、CSRF 和预期用户 ID 原样透传。业务服务继续执行 Spring Security 和账号撤销校验。网关拒绝 `/api/internal/**`、歧义编码路径以及客户端伪造的身份/转发头。内部 Python Agent 应直连受限网络中的核心服务，并保留已有内部令牌与签名校验，不经过公网网关。
 
-只有核心执行 Flyway。所有 31 份历史 SQL 仍位于 `food-boot/src/main/resources/db/migration`，core 构建时打入同一组资源，未修改历史内容。媒体无迁移权限职责。新增 SQL 继续添加下一版本。
+只有核心执行 Flyway。所有 31 份历史 SQL 仍位于 `food-boot/src/main/resources/db/migration`，core 构建时打入同一组资源，未修改历史内容。用户和媒体不执行迁移。新增 SQL 继续添加下一版本。
 
 共享默认配置在 `food-platform/src/main/resources/backend-defaults.yml`；启动工程的 `application.yml` 先导入默认值，再用后续 YAML 文档覆盖服务名/端口。Mapper 使用 `classpath*:mapper/*.xml` 加载各模块资源。
 
 ## 验证
 
-`food-boot` 保留原有回归；打包测试验证 Mapper、迁移、组件与真实图片解码子进程。`food-gateway` 测试真实 HTTP 路由、Cookie/CSRF 透传、身份头过滤与内部接口阻断。`food-media-boot` 测试远程图片查询的会话转发、可见性错误和上游失败。显式 MySQL/Redis 测试仍需隔离测试实例和原有启用变量。
+`food-boot` 保留原有回归；打包测试验证 Mapper、迁移、组件与真实图片解码子进程。`food-gateway` 测试真实 HTTP 路由、Cookie/CSRF 透传、身份头过滤与内部接口阻断。`food-media-boot` 测试远程图片查询的会话转发、可见性错误和上游失败。`food-user-client` 验证内部令牌、缺失账号、上游故障与拒绝重定向；Session 回归验证服务故障保留会话、停用/版本撤销以及账号切换。显式 MySQL/Redis 测试仍需隔离测试实例和原有启用变量。
 
 Gateway 使用与 Boot 3.5 对应的 [Gateway 4.3](https://docs.spring.io/spring-cloud-gateway/reference/4.3/spring-cloud-gateway-server-webflux/starter.html)，独立于 Spring MVC 业务进程。

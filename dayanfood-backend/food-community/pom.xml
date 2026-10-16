@@ -20,15 +20,11 @@
         </dependency>
         <dependency>
             <groupId>com.dayan</groupId>
-            <artifactId>food-user</artifactId>
+            <artifactId>food-platform</artifactId>
         </dependency>
         <dependency>
             <groupId>com.dayan</groupId>
             <artifactId>food-catalog</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.dayan</groupId>
-            <artifactId>food-achievement</artifactId>
         </dependency>
     </dependencies>
 </project>

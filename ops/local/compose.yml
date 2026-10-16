@@ -1,0 +1,35 @@
+name: terra-food-local
+services:
+  mysql:
+    stop_grace_period: 30s
+    image: ${LOCAL_MYSQL_IMAGE:-mysql:8.4}
+    environment:
+      MYSQL_DATABASE: dayan_food_local
+      MYSQL_USER: terra_local
+      MYSQL_PASSWORD: ${LOCAL_DB_PASSWORD:?required}
+      MYSQL_ROOT_PASSWORD: ${LOCAL_DB_ROOT_PASSWORD:?required}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--transaction-isolation=REPEATABLE-READ"]
+    ports: ["127.0.0.1:13306:3306"]
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD-SHELL", 'MYSQL_PWD="$$MYSQL_ROOT_PASSWORD" mysqladmin ping -h 127.0.0.1 -uroot --silent']
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${LOCAL_REDIS_PASSWORD:?required}
+    command: ["sh", "-c", 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    ports: ["127.0.0.1:16379:6379"]
+    volumes: ["redis-data:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+volumes:
+  mysql-data:
+  redis-data:

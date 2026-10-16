@@ -7,7 +7,6 @@ import com.dayan.food.entity.enums.UserRole;
 import com.dayan.food.entity.po.AppUser;
 import com.dayan.food.entity.vo.AuthUserVO;
 import com.dayan.food.mapper.AppUserMapper;
-import com.dayan.food.service.AchievementService;
 import com.dayan.food.service.AuthService;
 import com.dayan.food.service.PasswordResetCodeService;
 import com.dayan.food.service.RegistrationCodeService;
@@ -31,7 +30,6 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final RegistrationCodeService registrationCodeService;
     private final PasswordResetCodeService passwordResetCodeService;
-    private final AchievementService achievementService;
     private final UserReviewPresenter reviewPresenter;
 
     public AuthServiceImpl(
@@ -40,7 +38,6 @@ public class AuthServiceImpl implements AuthService {
             PasswordEncoder passwordEncoder,
             RegistrationCodeService registrationCodeService,
             PasswordResetCodeService passwordResetCodeService,
-            AchievementService achievementService,
             UserReviewPresenter reviewPresenter
     ) {
         this.authenticationManager = authenticationManager;
@@ -48,7 +45,6 @@ public class AuthServiceImpl implements AuthService {
         this.passwordEncoder = passwordEncoder;
         this.registrationCodeService = registrationCodeService;
         this.passwordResetCodeService = passwordResetCodeService;
-        this.achievementService = achievementService;
         this.reviewPresenter = reviewPresenter;
     }
 

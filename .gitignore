@@ -19,3 +19,6 @@ __pycache__/
 
 # Mimosa 安全扫描台账（本地审计工件，不入库）
 .mimosa/
+
+# Persistent local runtime configuration, logs and process IDs
+.local/

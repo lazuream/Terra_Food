@@ -16,7 +16,7 @@ class RegistrationCodeServiceImplTests {
   var store=mock(AtomicChallengeStore.class);var captcha=mock(CaptchaService.class);
   ValueOperations<String,String> values=mock(ValueOperations.class);when(redis.opsForValue()).thenReturn(values);
   when(values.setIfAbsent(anyString(),anyString(),any(Duration.class))).thenReturn(true);
-  var service=new RegistrationCodeServiceImpl(mail,redis,users,store,captcha,"test@example.com",Duration.ofMinutes(10),Duration.ofSeconds(60),5);
+  var service=new RegistrationCodeServiceImpl(mail,redis,users,store,captcha,"test@example.com",Duration.ofMinutes(10),Duration.ofSeconds(60),5,new com.dayan.food.config.RegistrationVerificationSettings(true,new org.springframework.mock.env.MockEnvironment()));
   service.sendCode(" User@Example.COM ","challenge","12");
   verify(captcha).verify("challenge","12");
   var code=ArgumentCaptor.forClass(String.class);
@@ -32,7 +32,7 @@ class RegistrationCodeServiceImplTests {
   ValueOperations<String,String> values=mock(ValueOperations.class);when(redis.opsForValue()).thenReturn(values);when(values.setIfAbsent(anyString(),anyString(),any(Duration.class))).thenReturn(true);
   when(store.issue(anyString(),anyString(),anyString(),any(Duration.class))).thenReturn("generation-1");
   doThrow(new MailSendException("unavailable")).when(mail).send(any(SimpleMailMessage.class));
-  var service=new RegistrationCodeServiceImpl(mail,redis,users,store,mock(CaptchaService.class),"test@example.com",Duration.ofMinutes(10),Duration.ofSeconds(60),5);
+  var service=new RegistrationCodeServiceImpl(mail,redis,users,store,mock(CaptchaService.class),"test@example.com",Duration.ofMinutes(10),Duration.ofSeconds(60),5,new com.dayan.food.config.RegistrationVerificationSettings(true,new org.springframework.mock.env.MockEnvironment()));
   assertThrows(RegistrationCodeDeliveryException.class,()->service.sendCode("user@example.com","challenge","1"));
   verify(store).revoke("registration","user@example.com","generation-1");
  }

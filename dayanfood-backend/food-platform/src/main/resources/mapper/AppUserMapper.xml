@@ -63,6 +63,10 @@
         WHERE email = #{email}
     </select>
 
+    <select id="findAccountStatus" resultType="com.dayan.food.entity.vo.AccountStatusVO">
+        SELECT subject_id, auth_version, active, role FROM app_user WHERE id = #{id}
+    </select>
+
     <select id="findById" resultMap="appUserResultMap">
         SELECT <include refid="userColumns"/>
         FROM app_user

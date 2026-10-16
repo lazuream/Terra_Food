@@ -77,6 +77,7 @@ app:
     mcp-backend-token: ${MCP_BACKEND_TOKEN:}
     context-secret: ${AGENT_CONTEXT_SECRET:}
   registration-code:
+    verification-enabled: ${REGISTRATION_EMAIL_VERIFICATION_ENABLED:true}
     from: ${MAIL_FROM:}
     expiration: ${REGISTRATION_CODE_EXPIRATION:10m}
     resend-interval: ${REGISTRATION_CODE_RESEND_INTERVAL:60s}

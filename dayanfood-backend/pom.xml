@@ -30,6 +30,8 @@
         <module>food-core-boot</module>
         <module>food-media-boot</module>
         <module>food-gateway</module>
+        <module>food-user-client</module>
+        <module>food-user-boot</module>
     </modules>
 
     <properties>
@@ -45,6 +47,7 @@
 
     <dependencyManagement>
         <dependencies>
+<dependency><groupId>com.dayan</groupId><artifactId>food-user-client</artifactId><version>${project.version}</version></dependency>
 <dependency><groupId>com.dayan</groupId><artifactId>food-platform</artifactId><version>${project.version}</version></dependency>
             <dependency>
                 <groupId>com.dayan</groupId>

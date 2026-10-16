@@ -135,3 +135,8 @@ jobs:
 
       - name: Validate Docker Compose
         run: docker compose --profile agent config --quiet
+
+      - name: Validate split services Compose
+        env:
+          UPLOAD_DIRECTORY: /tmp/terra-food-uploads
+        run: docker compose --env-file ops/services/.env.example -f ops/services/compose.yml config --quiet

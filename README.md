@@ -161,11 +161,13 @@ Terra_Food/
 ├── miniprogram/            # 微信小程序
 ├── packages/mobile/        # 两端共享页面、API 与会话逻辑
 ├── web/                    # Vue 网站与静态资源
-├── dayanfood-backend/       # Maven 多模块后端，可单体或 Gateway + 核心 + 图片服务部署
+├── dayanfood-backend/       # Maven 多模块后端，可单体或 Gateway + 用户 + 核心 + 图片服务部署
 │   ├── food-platform/      # 公共鉴权、Web 配置与账号 Mapper
 │   ├── food-gateway/       # 独立 Gateway 入口
 │   ├── food-core-boot/     # 核心业务服务启动
 │   ├── food-media-boot/    # 图片服务启动
+│   ├── food-user-boot/     # 用户服务启动
+│   ├── food-user-client/   # 用户服务内部查询客户端
 │   ├── food-boot/          # 兼容单体启动与 Flyway 历史
 │   └── food-*/             # 用户、菜品、社区、成就、图片、AI 与共享模块
 ├── agent-service/          # 可选 AI API 与 MCP 服务
@@ -183,7 +185,7 @@ Terra_Food/
 
 ## App、微信小程序与服务拆分
 
-新增 `app/` 和 `miniprogram/` 独立工程，共享 `packages/mobile/`，不新增 H5 工程。详情见 [移动端说明](docs/mobile-clients.md)。后端支持兼容单体启动，或 Gateway + 核心 + 图片服务部署，见 [后端说明](dayanfood-backend/README.md)。
+新增 `app/` 和 `miniprogram/` 独立工程，共享 `packages/mobile/`，不新增 H5 工程。详情见 [移动端说明](docs/mobile-clients.md)。后端支持兼容单体启动，或 Gateway + 用户 + 核心 + 图片服务部署，见 [后端说明](dayanfood-backend/README.md)。
 
 <a id="development"></a>
 

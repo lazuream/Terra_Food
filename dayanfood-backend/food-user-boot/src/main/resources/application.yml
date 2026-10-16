@@ -1,0 +1,18 @@
+spring:
+  config:
+    import: classpath:backend-defaults.yml
+---
+spring:
+  application:
+    name: food-user
+  flyway:
+    enabled: false
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8083}
+app:
+  media:
+    serve-uploads: false
+  user-service:
+    internal-enabled: true
+    token: ${USER_SERVICE_TOKEN}

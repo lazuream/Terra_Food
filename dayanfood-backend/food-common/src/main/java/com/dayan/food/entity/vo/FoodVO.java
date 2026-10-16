@@ -39,6 +39,10 @@ public record FoodVO(
     }
 
     public static FoodVO from(Food food, AppUser creator) {
+        return fromSummary(food, creator == null ? UserSummaryVO.fallback(food.getCreatedBy()) : UserSummaryVO.from(creator));
+    }
+
+    public static FoodVO fromSummary(Food food, UserSummaryVO creator) {
         return new FoodVO(
                 food.getId(),
                 food.getName(),
@@ -58,9 +62,7 @@ public record FoodVO(
                 food.getReviewedBy(),
                 food.getReviewedAt(),
                 food.getCreatedBy(),
-                creator == null
-                        ? UserSummaryVO.fallback(food.getCreatedBy())
-                        : UserSummaryVO.from(creator),
+                creator,
                 food.getCreatedAt()
         );
     }

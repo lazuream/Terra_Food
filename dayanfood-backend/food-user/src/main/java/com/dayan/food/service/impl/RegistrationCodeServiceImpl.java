@@ -1,6 +1,7 @@
 package com.dayan.food.service.impl;
 
 import com.dayan.food.mapper.AppUserMapper;
+import com.dayan.food.config.RegistrationVerificationSettings;
 import com.dayan.food.service.AtomicChallengeStore;
 import com.dayan.food.service.CaptchaService;
 import com.dayan.food.service.RegistrationCodeDeliveryException;
@@ -34,6 +35,7 @@ public class RegistrationCodeServiceImpl implements RegistrationCodeService {
     private final Duration expiration;
     private final Duration resendInterval;
     private final int maxAttempts;
+    private final RegistrationVerificationSettings verificationSettings;
 
     public RegistrationCodeServiceImpl(
             JavaMailSender mailSender,
@@ -44,7 +46,8 @@ public class RegistrationCodeServiceImpl implements RegistrationCodeService {
             @Value("${app.registration-code.from:}") String from,
             @Value("${app.registration-code.expiration:10m}") Duration expiration,
             @Value("${app.registration-code.resend-interval:60s}") Duration resendInterval,
-            @Value("${app.registration-code.max-attempts:5}") int maxAttempts
+            @Value("${app.registration-code.max-attempts:5}") int maxAttempts,
+            RegistrationVerificationSettings verificationSettings
     ) {
         this.mailSender = mailSender;
         this.redisTemplate = redisTemplate;
@@ -55,10 +58,14 @@ public class RegistrationCodeServiceImpl implements RegistrationCodeService {
         this.expiration = expiration;
         this.resendInterval = resendInterval;
         this.maxAttempts = maxAttempts;
+        this.verificationSettings = verificationSettings;
     }
 
     @Override
     public void sendCode(String email, String captchaId, String captchaAnswer) {
+        if (!verificationSettings.enabled()) {
+            throw new IllegalArgumentException("本地注册已关闭邮箱验证，无需发送验证码");
+        }
         // 先完成人机验证（一次性），再检查邮箱与冷却，避免让自动化脚本轻易触发真实发信。
         captchaService.verify(captchaId, captchaAnswer);
 
@@ -104,7 +111,12 @@ public class RegistrationCodeServiceImpl implements RegistrationCodeService {
     @Override
     public String verify(String email, String code) {
         String normalizedEmail = normalize(email);
-        challenges.claim("registration", normalizedEmail, code, maxAttempts, true);
+        if (verificationSettings.enabled()) {
+            if (code == null || !code.matches("[0-9]{6}")) {
+                throw new IllegalArgumentException("请输入6位邮箱验证码");
+            }
+            challenges.claim("registration", normalizedEmail, code, maxAttempts, true);
+        }
         return normalizedEmail;
     }
 

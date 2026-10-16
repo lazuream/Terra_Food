@@ -479,6 +479,7 @@ export default {
     actions: '登录操作',
   },
   register: {
+    localVerificationDisabled: '本地开发：邮箱验证码暂时关闭，可直接注册。',
     eyebrow: 'A NEW JOURNEY',
     artTitle: '从一餐一味，走入山河',
     quote: '每一次记录，都让一种地方滋味被更多人看见。',

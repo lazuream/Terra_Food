@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { getCaptcha, register, sendRegistrationCode } from '../api'
+import { registrationEmailVerificationEnabled } from '../config/registration'
 import type { CaptchaChallenge, RegisterPayload } from '../types'
 
 const { t } = useI18n()
@@ -139,7 +140,7 @@ async function submit() {
   }
 }
 
-onMounted(loadCaptcha)
+onMounted(() => { if (registrationEmailVerificationEnabled) void loadCaptcha() })
 onUnmounted(() => window.clearInterval(cooldownTimer))
 </script>
 
@@ -187,9 +188,10 @@ onUnmounted(() => window.clearInterval(cooldownTimer))
             autocomplete="email"
             required
           >
-          <small>{{ t('register.emailHint') }}</small>
+          <small v-if="registrationEmailVerificationEnabled">{{ t('register.emailHint') }}</small>
         </label>
-        <div class="captcha-block">
+        <p v-if="!registrationEmailVerificationEnabled" class="verification-code-status">{{ t('register.localVerificationDisabled') }}</p>
+        <div v-if="registrationEmailVerificationEnabled" class="captcha-block">
           <span class="captcha-label">{{ t('register.captcha') }}</span>
           <template v-if="captchaPassed">
             <p class="verification-code-status">{{ t('register.captchaPassed') }}</p>
@@ -211,7 +213,7 @@ onUnmounted(() => window.clearInterval(cooldownTimer))
             <small v-if="captchaError" class="captcha-error">{{ captchaError }}</small>
           </template>
         </div>
-        <label>
+        <label v-if="registrationEmailVerificationEnabled">
           {{ t('register.verificationCode') }}
           <span class="verification-code-row">
             <input

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { getCaptcha, register, sendRegistrationCode } from '../api'
+import { registrationEmailVerificationEnabled } from '../config/registration'
 import { isAdminRole, useAuth } from '../auth'
 import { apiErrorMessage } from '../apiError'
 import PasswordResetForm from '../components/PasswordResetForm.vue'
@@ -55,7 +56,7 @@ async function loadCaptcha() {
 
 watch(mode, (next) => {
   clearSecrets()
-  if (next === 'register') void loadCaptcha()
+  if (next === 'register' && registrationEmailVerificationEnabled) void loadCaptcha()
 }, { immediate: true })
 
 function safeRedirect(): string {
@@ -146,8 +147,9 @@ onUnmounted(() => window.clearInterval(timer))
           <label>{{ t('register.displayName') }}<input v-model.trim="registerForm.displayName" minlength="2" maxlength="50" required></label>
         </div>
         <label>{{ t('register.email') }}<input v-model.trim="registerForm.email" type="email" maxlength="254" autocomplete="email" required></label>
-        <div class="captcha-block"><span>{{ captcha?.question || t('register.captchaLoading') }}</span><input v-model.trim="captchaAnswer" inputmode="numeric" :disabled="!captcha"><button type="button" :disabled="!captcha || sendingCode || codeCooldown > 0" @click="sendCode">{{ codeCooldown > 0 ? t('register.resendCode', { seconds: codeCooldown }) : t('register.sendCode') }}</button></div>
-        <label>{{ t('register.verificationCode') }}<input v-model.trim="registerForm.verificationCode" inputmode="numeric" maxlength="6" required></label>
+        <p v-if="!registrationEmailVerificationEnabled" class="verification-code-status">{{ t('register.localVerificationDisabled') }}</p>
+        <div v-if="registrationEmailVerificationEnabled" class="captcha-block"><span>{{ captcha?.question || t('register.captchaLoading') }}</span><input v-model.trim="captchaAnswer" inputmode="numeric" :disabled="!captcha"><button type="button" :disabled="!captcha || sendingCode || codeCooldown > 0" @click="sendCode">{{ codeCooldown > 0 ? t('register.resendCode', { seconds: codeCooldown }) : t('register.sendCode') }}</button></div>
+        <label v-if="registrationEmailVerificationEnabled">{{ t('register.verificationCode') }}<input v-model.trim="registerForm.verificationCode" inputmode="numeric" maxlength="6" required></label>
         <div class="auth-field-grid">
           <label>{{ t('register.password') }}<input v-model="registerForm.password" type="password" minlength="8" maxlength="16" pattern="^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]+$" autocomplete="new-password" required></label>
           <label>{{ t('register.confirmPassword') }}<input v-model="registerForm.confirmPassword" type="password" minlength="8" maxlength="16" autocomplete="new-password" required></label>

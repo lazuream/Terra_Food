@@ -20,7 +20,7 @@
         </dependency>
         <dependency>
             <groupId>com.dayan</groupId>
-            <artifactId>food-user</artifactId>
+            <artifactId>food-platform</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.poi</groupId>

@@ -161,11 +161,13 @@ Terra_Food/
 ├── miniprogram/            # WeChat mini program
 ├── packages/mobile/        # Shared mobile UI and API client
 ├── web/                    # Vue website and static assets
-├── dayanfood-backend/       # Maven modules with unified or gateway/core/media deployment
+├── dayanfood-backend/       # Maven modules with unified or gateway/user/core/media deployment
 │   ├── food-platform/      # Shared authentication and infrastructure
 │   ├── food-gateway/       # Independent Gateway
 │   ├── food-core-boot/     # Core service entry point
 │   ├── food-media-boot/    # Media service entry point
+│   ├── food-user-boot/     # User service entry point
+│   ├── food-user-client/   # Internal user-service query client
 │   ├── food-boot/          # Compatible unified entry point and migrations
 │   └── food-*/             # User, catalog, community, achievement, media, Agent and common
 ├── agent-service/          # Optional AI API and MCP service
@@ -183,7 +185,7 @@ Project code is released under the [MIT License](LICENSE). Check the sources and
 
 ## App, WeChat mini program and services
 
-Separate `app/` and `miniprogram/` projects share `packages/mobile/`, outside the existing `web/`. No H5 target is added. See [mobile client setup](docs/mobile-clients.md) and [backend service setup](dayanfood-backend/README.md). The backend supports the existing unified JAR and a gateway/core/media deployment.
+Separate `app/` and `miniprogram/` projects share `packages/mobile/`, outside the existing `web/`. No H5 target is added. See [mobile client setup](docs/mobile-clients.md) and [backend service setup](dayanfood-backend/README.md). The backend supports the existing unified JAR and a gateway/user/core/media deployment.
 
 <a id="development"></a>
 

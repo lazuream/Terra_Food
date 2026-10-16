@@ -1,6 +1,8 @@
 package com.dayan.food.config;
 
-import com.dayan.food.mapper.AppUserMapper;
+import com.dayan.food.service.AccountStatusReader;
+import com.dayan.food.entity.vo.AccountStatusVO;
+import com.dayan.food.exception.UserServiceUnavailableException;
 import com.dayan.food.security.AppUserPrincipal;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -20,10 +22,10 @@ import java.util.List;
 @Component
 public class ActiveSessionFilter extends OncePerRequestFilter {
 
-    private final AppUserMapper appUserMapper;
+    private final AccountStatusReader accounts;
 
-    public ActiveSessionFilter(AppUserMapper appUserMapper) {
-        this.appUserMapper = appUserMapper;
+    public ActiveSessionFilter(AccountStatusReader accounts) {
+        this.accounts = accounts;
     }
 
     @Override
@@ -45,10 +47,19 @@ public class ActiveSessionFilter extends OncePerRequestFilter {
                 reject(request, response);
                 return;
             }
-            var user = appUserMapper.findById(principal.userId());
-            if (user == null || !user.isActive()
-                    || !user.getSubjectId().equals(principal.subjectId())
-                    || user.getAuthVersion() != principal.authVersion()) {
+            AccountStatusVO user;
+            try {
+                user = accounts.findStatus(principal.userId());
+            } catch (UserServiceUnavailableException exception) {
+                response.setStatus(503);
+                response.setContentType("application/json;charset=UTF-8");
+                response.setHeader("Cache-Control", "private, no-store");
+                response.getWriter().write("{\"code\":\"USER_SERVICE_UNAVAILABLE\",\"message\":\"用户服务暂时不可用，请稍后重试\"}");
+                return;
+            }
+            if (user == null || !user.active()
+                    || !user.subjectId().equals(principal.subjectId())
+                    || user.authVersion() != principal.authVersion()) {
                 reject(request, response);
                 return;
             }
@@ -63,7 +74,7 @@ public class ActiveSessionFilter extends OncePerRequestFilter {
                 return;
             }
 
-            String expectedAuthority = "ROLE_" + user.getRole().name();
+            String expectedAuthority = "ROLE_" + user.role().name();
             boolean roleIsCurrent = authentication.getAuthorities().stream()
                     .anyMatch(authority -> authority.getAuthority().equals(expectedAuthority));
             if (!roleIsCurrent) {

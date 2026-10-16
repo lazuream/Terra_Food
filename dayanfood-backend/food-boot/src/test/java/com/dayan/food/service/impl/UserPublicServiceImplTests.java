@@ -41,7 +41,7 @@ class UserPublicServiceImplTests {
 
     @BeforeEach
     void setUp() {
-        service = new UserPublicServiceImpl(appUserMapper, foodMapper, achievementMapper, etchingDesignService);
+        service = new UserPublicServiceImpl(new LocalPublicUserProfileReader(appUserMapper, achievementMapper, etchingDesignService), foodMapper);
     }
 
     @Test

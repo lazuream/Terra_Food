@@ -1,5 +1,7 @@
 name: terra-food-services
 x-backend-env: &backend-env
+  USER_SERVICE_URL: http://user:8083
+  USER_SERVICE_TOKEN: ${USER_SERVICE_TOKEN:?Configure a random shared service token of at least 32 characters}
   DB_URL: ${DB_URL:?Configure an existing MySQL database URL}
   DB_USERNAME: ${DB_USERNAME:?Configure database user}
   DB_PASSWORD: ${DB_PASSWORD:?Configure database password}
@@ -21,14 +23,26 @@ services:
     environment:
       <<: *backend-env
       SERVER_PORT: 8081
-      MAIL_HOST: ${MAIL_HOST:-}
-      MAIL_USERNAME: ${MAIL_USERNAME:-}
-      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-}
       AGENT_SERVICE_URL: ${AGENT_SERVICE_URL:-http://agent:8090}
       AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-}
       MCP_BACKEND_TOKEN: ${MCP_BACKEND_TOKEN:-}
       AGENT_CONTEXT_SECRET: ${AGENT_CONTEXT_SECRET:-}
+    restart: unless-stopped
+  user:
+    build:
+      context: ../..
+      dockerfile: ops/Dockerfile.services
+      target: user
+    environment:
+      <<: *backend-env
+      SERVER_PORT: 8083
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+    depends_on:
+      core:
+        condition: service_started
     restart: unless-stopped
   media:
     build:
@@ -55,11 +69,13 @@ services:
       GATEWAY_PORT: 8080
       CORE_SERVICE_URL: http://core:8081
       MEDIA_SERVICE_URL: http://media:8082
+      USER_SERVICE_URL: http://user:8083
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
     depends_on:
       - core
       - media
+      - user
     restart: unless-stopped
 networks:
   default:

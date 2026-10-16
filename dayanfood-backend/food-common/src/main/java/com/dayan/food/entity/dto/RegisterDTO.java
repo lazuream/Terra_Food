@@ -28,8 +28,8 @@ public record RegisterDTO(
         @Size(max = 254)
         String email,
 
-        @NotBlank
-        @Pattern(regexp = "^\\d{6}$")
+        // Required by the registration service except in explicitly configured local development.
+        @Pattern(regexp = "^(?:\\d{6})?$")
         String verificationCode
 ) {
 }

@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class GatewayRoutingTests {
     static final HttpServer core = server("core");
     static final HttpServer media = server("media");
+    static final HttpServer user = server("user");
     @Autowired WebTestClient client;
     @org.springframework.boot.test.web.server.LocalServerPort int port;
 
@@ -28,7 +29,8 @@ class GatewayRoutingTests {
                         + exchange.getRequestHeaders().getFirst("X-User-Id") + "|"
                         + exchange.getRequestHeaders().getFirst("X-Forwarded-For") + "|"
                         + exchange.getRequestHeaders().getFirst("X-Expected-User-Id") + "|"
-                        + exchange.getRequestHeaders().getFirst("X-CSRF-TOKEN");
+                        + exchange.getRequestHeaders().getFirst("X-CSRF-TOKEN") + "|"
+                        + exchange.getRequestHeaders().getFirst("X-User-Service-Token");
                 byte[] data = body.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Set-Cookie", "SESSION=rotated; Path=/; HttpOnly; SameSite=Lax");
                 exchange.sendResponseHeaders(200, data.length);
@@ -39,9 +41,10 @@ class GatewayRoutingTests {
     }
     @DynamicPropertySource static void routes(DynamicPropertyRegistry registry) {
         registry.add("app.routes.core", () -> "http://127.0.0.1:" + core.getAddress().getPort());
+        registry.add("app.routes.user", () -> "http://127.0.0.1:" + user.getAddress().getPort());
         registry.add("app.routes.media", () -> "http://127.0.0.1:" + media.getAddress().getPort());
     }
-    @AfterAll static void stop() { core.stop(0); media.stop(0); }
+    @AfterAll static void stop() { core.stop(0); media.stop(0); user.stop(0); }
 
     @Test void routesMediaAndLeavesApiPathsAndQueriesIntact() {
         for (String path : new String[]{"/api/images", "/api/images/foods/1/export", "/uploads/one.png"})
@@ -52,17 +55,27 @@ class GatewayRoutingTests {
     }
     @Test void carriesSessionCsrfAndExpectedIdentityButRemovesForgedIdentity() {
         client.post().uri("/api/profile/favorites/3").header("Cookie", "SESSION=original")
-                .header("X-CSRF-TOKEN", "csrf").header("X-Expected-User-Id", "3")
+                .header("X-User-Service-Token", "forged-token").header("X-CSRF-TOKEN", "csrf").header("X-Expected-User-Id", "3")
                 .header("X-User-Id", "admin").header("X-Forwarded-For", "8.8.8.8")
                 .exchange().expectStatus().isOk().expectCookie().valueEquals("SESSION", "rotated")
                 .expectBody(String.class).value(body -> {
                     assertTrue(body.contains("|SESSION=original|null|"), body);
                     assertFalse(body.contains("8.8.8.8"), body);
-                    assertTrue(body.endsWith("|3|csrf"), body);
+                    assertTrue(body.endsWith("|3|csrf|null"), body);
                 });
     }
+    @Test void routesUserOperationsWithoutCapturingCatalogOrCommunity() {
+        for (String path : new String[]{"/api/auth/login", "/api/auth/csrf", "/api/admin/users", "/api/admin/users/3/role",
+                "/api/profile/avatar", "/api/profile/signature", "/api/profile/display-name", "/api/achievements/me", "/api/etchings"})
+            client.get().uri(path).exchange().expectStatus().isOk().expectBody(String.class)
+                    .value(body -> assertTrue(body.startsWith("user|" + path + "|"), body));
+        for (String path : new String[]{"/api/profile/foods", "/api/profile/footprints", "/api/profile/favorites/page",
+                "/api/admin/foods", "/api/users/3", "/api/foods/3/comments"})
+            client.get().uri(path).exchange().expectStatus().isOk().expectBody(String.class)
+                    .value(body -> assertTrue(body.startsWith("core|" + path + "|"), body));
+    }
     @Test void privateRoutesAndEncodedBypassesAreNotPublic() {
-        for (String path : new String[]{"/api/internal/agent/recommendations", "/api/internal;param/agent", "/api//internal/agent"})
+        for (String path : new String[]{"/api/internal/users/1/identity", "/api/internal/agent/recommendations", "/api/internal;param/agent", "/api//internal/agent"})
             client.get().uri(path).exchange().expectStatus().isNotFound();
         client.get().uri(java.net.URI.create("http://localhost:" + port + "/api/%69nternal/agent")).exchange().expectStatus().isNotFound();
     }

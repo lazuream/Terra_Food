@@ -19,7 +19,7 @@ class ExpectedIdentityFilterTests extends ActorTestSupport {
         var request=new MockHttpServletRequest("PATCH","/api/profile/signature");
         request.addHeader("X-Expected-User-Id","999999");
         var session=request.getSession(true);var response=new MockHttpServletResponse();var chain=new MockFilterChain();
-        new ActiveSessionFilter(users).doFilter(request,response,chain);
+        new ActiveSessionFilter(id -> new com.dayan.food.entity.vo.AccountStatusVO(account.getSubjectId(), account.getAuthVersion(), account.isActive(), account.getRole())).doFilter(request,response,chain);
         assertEquals(409,response.getStatus());assertTrue(response.getContentAsString().contains("IDENTITY_CHANGED"));
         assertNull(chain.getRequest());assertSame(session,request.getSession(false));
     }
