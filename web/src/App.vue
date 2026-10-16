@@ -162,7 +162,7 @@ async function logout() {
     <RouterView :key="route.meta.requiresAuth ? `${route.path}:${auth.sessionRevision.value}:${auth.currentUser.value?.id ?? 'anonymous'}` : route.path" />
   </main>
 
-  <BackgroundMusic v-if="!isAuthFlowPage" :launcher-visible="route.path !== '/'" />
+  <BackgroundMusic v-if="route.path === '/login' || !isAuthFlowPage" :launcher-visible="route.path !== '/'" />
   <AchievementToast />
   <AgentPanel v-if="auth.currentUser.value" v-show="auth.sessionConfirmed.value" :key="auth.sessionRevision.value" :launcher-visible="route.path !== '/'" />
 

@@ -1,4 +1,26 @@
 /* Final compatibility layer while legacy page styles move to semantic tokens. */
+html[data-theme='dark'] .login-launch-page {
+  color: var(--color-ink);
+  background: radial-gradient(circle at 50% 42%, #403129, #1b1714 72%);
+}
+html[data-theme='dark'] .login-launch-page::before { opacity: 0.08; }
+html[data-theme='dark'] .login-launch-footer,
+html[data-theme='dark'] .login-access-panel {
+  color: var(--color-ink);
+  background: var(--color-paper);
+  border-color: var(--border-paper);
+}
+html[data-theme='dark'] .login-launch-page :is(blockquote, .login-launch-account span, .login-launch-signature small),
+html[data-theme='dark'] .login-access-panel :is(.login-heading p, .login-heading h2, .login-form label, .login-access-close) {
+  color: var(--color-ink);
+}
+html[data-theme='dark'] .login-access-panel .role-tabs button {
+  color: var(--color-ink);
+  background: var(--color-input);
+}
+html[data-theme='dark'] .login-access-panel .role-tabs button.active {
+  border-color: var(--color-accent);
+}
 html[data-theme='dark'] body,
 html[data-theme='dark'] .login-page,
 html[data-theme='dark'] .admin-page,

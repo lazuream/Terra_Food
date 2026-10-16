@@ -7,6 +7,7 @@ import { getCaptcha, register, sendRegistrationCode } from '../api'
 import { registrationEmailVerificationEnabled } from '../config/registration'
 import { isAdminRole, useAuth } from '../auth'
 import { apiErrorMessage } from '../apiError'
+import { safeAuthRedirect } from '../authRedirect'
 import PasswordResetForm from '../components/PasswordResetForm.vue'
 import type { CaptchaChallenge, LoginPayload, RegisterPayload } from '../types'
 
@@ -60,13 +61,7 @@ watch(mode, (next) => {
 }, { immediate: true })
 
 function safeRedirect(): string {
-  const value = typeof route.query.redirect === 'string' ? route.query.redirect : ''
-  if (!value.startsWith('/') || value.startsWith('//') || /[\\\x00-\x1f]/.test(value)) return '/'
-  try {
-    const destination = new URL(value, window.location.origin)
-    if (destination.origin !== window.location.origin || /^\/(login|register)(\/|$)/.test(destination.pathname)) return '/'
-    return destination.pathname + destination.search + destination.hash
-  } catch { return '/' }
+  return safeAuthRedirect(route.query.redirect, window.location.origin)
 }
 
 async function submitLogin() {

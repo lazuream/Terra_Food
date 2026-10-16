@@ -477,6 +477,10 @@
 }
 
 @media (max-width: 780px) {
+  #app:has(.login-launch-page) #MusicControl {
+    bottom: calc(94px + env(safe-area-inset-bottom));
+  }
+
   .login-launch-page {
     min-height: 100svh;
     padding-bottom: 128px;

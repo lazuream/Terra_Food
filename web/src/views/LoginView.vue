@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
-import { AUTH_SESSION_CHANGE_KEY, isAdminRole, useAuth } from '../auth'
+import { isAdminRole, useAuth } from '../auth'
+import { safeAuthRedirect } from '../authRedirect'
+import { apiErrorMessage } from '../apiError'
 import PasswordResetForm from '../components/PasswordResetForm.vue'
 import LoginLoadingScene from '../components/LoginLoadingScene.vue'
-import type { LoginPayload, LoginRole, UserRole } from '../types'
+import type { AuthUser, LoginPayload, LoginRole } from '../types'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -27,28 +29,18 @@ const resetSucceeded = ref(false)
 const accessOpen = ref(registrationSucceeded || route.query.role === 'ADMIN')
 const rememberedUser = computed(() => auth.currentUser.value)
 // 登录成功后不再强制等待固定的终端动画时长；数据准备完成即可进入。
-const MIN_LOADING_DURATION_MS = 0
+const PROGRESS_ESTIMATE_MS = 5000
 const READY_HOLD_DURATION_MS = 200
 let preloadStartedAt = 0
 let progressTimer: ReturnType<typeof setInterval> | undefined
 let sceneWaitTimer: ReturnType<typeof setTimeout> | undefined
 let resolveSceneWait: ((active: boolean) => void) | undefined
 let disposed = false
+let logoutUnconfirmed = false
 
-function refreshSession() {
-  if (!loading.value && document.visibilityState === 'visible') void auth.restoreSession(true)
-}
-
-function handleSessionChange(event: StorageEvent) {
-  if (event.key === AUTH_SESSION_CHANGE_KEY) refreshSession()
-}
-
-onMounted(() => {
-  refreshSession()
-  window.addEventListener('focus', refreshSession)
-  document.addEventListener('visibilitychange', refreshSession)
-  window.addEventListener('storage', handleSessionChange)
-})
+// Foreground and cross-tab verification is owned by main.ts and auth.ts.
+// Clear sensitive input whenever that shared session generation changes.
+watch(auth.sessionRevision, () => { form.password = '' })
 
 function startPreloadProgress() {
   stopPreloadProgress()
@@ -57,7 +49,7 @@ function startPreloadProgress() {
   progressTimer = setInterval(() => {
     // 展示进度不是后端百分比；请求未完成时最多到 94%，避免提前宣告就绪。
     const elapsed = performance.now() - preloadStartedAt
-    preloadProgress.value = Math.min(94, (elapsed / MIN_LOADING_DURATION_MS) * 94)
+    preloadProgress.value = Math.min(94, (elapsed / PROGRESS_ESTIMATE_MS) * 94)
   }, 50)
 }
 
@@ -79,35 +71,38 @@ function waitForScene(milliseconds: number): Promise<boolean> {
 
 onBeforeUnmount(() => {
   disposed = true
-  window.removeEventListener('focus', refreshSession)
-  document.removeEventListener('visibilitychange', refreshSession)
-  window.removeEventListener('storage', handleSessionChange)
+  form.password = ''
   stopPreloadProgress()
   if (sceneWaitTimer) clearTimeout(sceneWaitTimer)
   resolveSceneWait?.(false)
 })
 
-async function enterFor(user: { role: UserRole }) {
+async function enterFor(user: Pick<AuthUser, 'id' | 'role'>) {
   if (disposed) return
-  // 数据加载与最短展示时间并行；慢请求不额外等待完整的五秒。
-  const remaining = MIN_LOADING_DURATION_MS - (performance.now() - preloadStartedAt)
-  if (remaining > 0 && !(await waitForScene(remaining))) return
+  const revision = auth.getSessionRevision()
   stopPreloadProgress()
   preloadProgress.value = 100
   if (!(await waitForScene(READY_HOLD_DURATION_MS))) return
-  const requestedRedirect = typeof route.query.redirect === 'string' ? route.query.redirect : undefined
-  await router.replace(isAdminRole(user.role) ? '/admin' : requestedRedirect || '/')
+  // A logout, role change or account switch while the scene settles cancels navigation.
+  if (disposed || revision !== auth.getSessionRevision() || !auth.sessionConfirmed.value
+      || auth.currentUser.value?.id !== user.id) return
+  await router.replace(isAdminRole(user.role) ? '/admin' : safeAuthRedirect(route.query.redirect, window.location.origin))
 }
 
 async function awaken() {
   if (loading.value || checkingSession.value) return
   checkingSession.value = true
+  error.value = ''
   try {
     await auth.restoreSession(true)
   } finally {
     checkingSession.value = false
   }
   if (disposed) return
+  if (!auth.sessionConfirmed.value) {
+    error.value = t('login.sessionCheckFailed')
+    return
+  }
   const user = rememberedUser.value
   if (!user) {
     accessOpen.value = true
@@ -125,14 +120,24 @@ async function awaken() {
   }
 }
 
-function switchAccount() {
+async function switchAccount() {
   if (loading.value || checkingSession.value) return
+  checkingSession.value = true
   form.username = ''
   form.password = ''
   form.role = isAdminRole(rememberedUser.value?.role) ? 'ADMIN' : 'USER'
   error.value = ''
   resetSucceeded.value = false
-  accessOpen.value = true
+  try {
+    if (logoutUnconfirmed || auth.currentUser.value || !auth.sessionConfirmed.value) {
+      logoutUnconfirmed = true
+      await auth.logout()
+      logoutUnconfirmed = false
+    }
+    if (!disposed) accessOpen.value = true
+  } catch {
+    if (!disposed) error.value = t('audit.sessionLogoutFailed')
+  } finally { checkingSession.value = false }
 }
 
 function closeAccess() {
@@ -149,30 +154,28 @@ function selectRole(role: LoginRole) {
 function handlePasswordReset(username: string) {
   form.username = username
   form.password = ''
+  error.value = ''
   resetSucceeded.value = true
 }
 
 async function submit() {
-  if (loading.value) return
+  if (loading.value || checkingSession.value) return
+  const payload = { ...form, username: form.username.trim(), password: form.password.normalize('NFKC').trim() }
   loading.value = true
   error.value = ''
   startPreloadProgress()
-  // 先让全屏初始化场景完成首帧渲染，再发起登录与 Redis 预热请求。
+  // Render the scene without adding a fixed delay to authentication.
   await nextTick()
 
   try {
-    // Login passwords only contain letters and numbers. Normalize full-width input
-    // and trim invisible whitespace introduced by copy and paste.
-    const user = await auth.login({
-      ...form,
-      username: form.username.trim(),
-      password: form.password.normalize('NFKC').trim(),
-    })
+    if (disposed) return
+    const user = await auth.login(payload)
     form.password = ''
     await enterFor(user)
-  } catch {
-    error.value = t('login.error')
+  } catch (cause) {
+    if (!disposed) error.value = apiErrorMessage(cause, t('login.error'))
   } finally {
+    form.password = ''
     stopPreloadProgress()
     loading.value = false
   }
@@ -205,6 +208,7 @@ async function submit() {
         >{{ t('login.accountLabel') }}</button>
         <span aria-live="polite">{{ rememberedUser?.displayName || rememberedUser?.username || t('login.accountUnbound') }}</span>
       </div>
+      <p v-if="error && !accessOpen" class="form-error" role="alert">{{ error }}</p>
     </div>
 
     <footer class="login-launch-footer" :inert="loading">
@@ -233,7 +237,7 @@ async function submit() {
             @click="closeAccess"
           >×</button>
 
-          <nav class="auth-mode-tabs" aria-label="认证方式"><RouterLink class="active" to="/login">{{ t('login.submit') }}</RouterLink><RouterLink to="/register">{{ t('login.registerNow') }}</RouterLink></nav>
+          <nav class="auth-mode-tabs" :aria-label="t('login.actions')"><RouterLink class="active" to="/login">{{ t('login.submit') }}</RouterLink><RouterLink to="/register">{{ t('login.registerNow') }}</RouterLink></nav>
           <div class="login-heading">
             <span class="login-access-seal">炎</span>
             <small>{{ t('login.welcome') }}</small>
@@ -268,7 +272,7 @@ async function submit() {
               <input v-model="form.password" type="password" autocomplete="current-password" required>
             </label>
 
-            <p v-if="error" class="form-error">{{ error }}</p>
+            <p v-if="error" class="form-error" role="alert">{{ error }}</p>
 
             <button class="login-submit" :disabled="loading">
               {{ loading ? t('login.loggingIn') : t('login.submit') }}
@@ -278,7 +282,7 @@ async function submit() {
               <RouterLink to="/register">{{ t('login.registerNow') }}</RouterLink>
             </div>
           </form>
-          <PasswordResetForm @reset="handlePasswordReset" />
+          <PasswordResetForm :key="auth.sessionRevision.value" @reset="handlePasswordReset" />
         </div>
       </div>
     </Transition>

@@ -414,6 +414,7 @@ export default {
     },
   },
   login: {
+    sessionCheckFailed: '暂时无法确认登录状态，请稍后重试。',
     eyebrow: 'IDENTITY OF TASTE',
     artTitle: '入卷山河，寻味人间',
     quote: '食物不仅是滋味，也是一个地方写给时间的信。',

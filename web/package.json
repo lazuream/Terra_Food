@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
+    "test:login": "node scripts/login-restoration-smoke.cjs",
     "test:share": "node scripts/share-card-smoke.cjs",
     "test:archive": "node scripts/archive-redesign-smoke.cjs",
     "test:food-edit-review": "node scripts/food-edit-review-smoke.cjs",

@@ -414,6 +414,7 @@ export default {
     },
   },
   login: {
+    sessionCheckFailed: 'Unable to confirm your session. Please try again shortly.',
     eyebrow: 'IDENTITY OF TASTE',
     artTitle: 'Enter the atlas of flavors',
     quote: 'Food is more than flavor; it is a letter from a place to time.',
